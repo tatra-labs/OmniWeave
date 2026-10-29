@@ -23,6 +23,7 @@ from omniweave_conform import removal as removal_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import Assessment, Clause
+from omniweave_conform.release import DECLARED_UNKNOWN
 
 REPO = Path(__file__).resolve().parents[4]
 PDFIUM = "parse.pdf.pdfium"
@@ -174,12 +175,15 @@ DRAFTED = [
 added `structure_f1` over the ten drafted `.structure.jsonl` references, whose fix names those
 rows and not the assertions file's."""
 UNDER_MIN = [
-    "  metric      false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; 0 of 13 "
-    "answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",
-    "              fix: measure 30 or more a slice: add questions to the suite's corpus, then ow "
-    "eval run --suite absence",
+    "  declared-unknown  false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; "
+    "0 of 13 answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",
+    "              fix: " + DECLARED_UNKNOWN["false_confident_zero"],
 ]
-"""D933: the removal half's ceiling over 13 answerable questions, naming more as its fix."""
+"""D933's ceiling over 13 answerable questions, and since D1017 a DISCLOSURE rather than a
+refusal: a user ruling of 2026-10-29 declared it unknown, because 13 is the whole answerable
+population and no signature or rerun can compute a rate under `min_slice_n`. It is still printed,
+with the detail the run computed, and the fix is the register's own reason -- which is why this
+expectation reads it from `DECLARED_UNKNOWN` instead of restating it."""
 
 
 def _masked(out: str) -> list[str]:
@@ -268,9 +272,13 @@ def test_every_built_suite_by_default_and_release_check_refuses_only_the_drafted
     assert _masked(out) == [
         *UNDER_MIN,
         *DRAFTED,
-        "ow eval release-check: refused, 5 finding(s); 10 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
-    ], "D913: every hard gate holds; the unverified labels' rates refuse, and D933's ceiling"
+    ], (
+        "D913: every hard gate holds and the unverified labels' rates refuse. FOUR findings and "
+        "not five since D1017: D933's ceiling is disclosed above rather than counted, so the "
+        "reviewer's signature is the only input between this output and exit 0"
+    )
 
 
 def test_deterministic_half_runs_the_damage_half_alone(

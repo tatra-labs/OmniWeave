@@ -53,6 +53,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.drivers.card import MIN_SLICE_N
@@ -64,7 +65,17 @@ if TYPE_CHECKING:
 
     from omniweave_core.store.oweval import RunStatus, Standing
 
-__all__ = ["SUITES", "Finding", "Gate", "Release", "check_release", "hard_gates", "latest"]
+__all__ = [
+    "DECLARED_UNKNOWN",
+    "NOT_APPLICABLE",
+    "SUITES",
+    "Finding",
+    "Gate",
+    "Release",
+    "check_release",
+    "hard_gates",
+    "latest",
+]
 
 SUITES: Final = ("parse", "extract", "retrieve", "absence", "roundtrip", "portability", "perf")
 """The seven suites (13-quality.md:1881, 16-roadmap.md W10.6), as `eval_run.suite` spells them."""
@@ -86,6 +97,35 @@ reporting it as not applicable would retire a number the project still owes.
 `test_conform_release.py` asserts the two agree. A suite named here still has to write its run --
 `--strict` refuses a suite with no run at all, and 16:942's "skip is not a state" is exactly that
 rule -- so the disclosure is a row in the `.oweval` and a line in the report, never an absence."""
+
+DECLARED_UNKNOWN: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "false_confident_zero": (
+            "nothing at v1.0: the metric is declared unknown and says why. Its population is the "
+            "whole answerable set, 13 questions against min_slice_n = 30, so no signature and no "
+            "rerun can compute it -- only 17 more answerable questions can, and that is deferred "
+            "past v1.0. Removing this row means publishing the rate, not editing the register"
+        )
+    }
+)
+"""The metrics that read `UNKNOWN` and do NOT refuse a release, each with its reason. **D1017.**
+
+A user ruling of 2026-10-29. `false_confident_zero` is measured over the adoption catalogue's
+answerable questions and D933 found 0 of 13 answered absent -- a clean result, and an unpublishable
+one, because 13 is under `min_slice_n = 30` (13:1088). Unlike every other `UNKNOWN` in this
+register the fix is not a reviewer's signature: ruling 3's refusal names verification as the fix
+and a rate over an under-powered population has no verification to name. 13 IS the whole
+answerable population, so the only fix is a bigger catalogue.
+
+This is the metric-level shape of `NOT_APPLICABLE`'s suite-level one, and it is deliberately NOT
+the same mechanism: the `absence` suite IS applicable and DOES run, its other metric
+(`degradation_detection`) scores, and the run is `ok`. Only this one rate is withheld. Reporting
+the suite not-applicable would retire `degradation_detection` with it.
+
+**A declared unknown is still printed**, as `disclosed`, with the standing the run computed and
+the reason above -- `ok` does not read `disclosed`, and the report does. A number the project owes
+and cannot yet publish is a thing a reader must see, which is the same rule D987 wrote for a
+not-applicable suite. 16-roadmap.md:978's P10 exit criterion names it beside `perf`."""
 
 _FIX: Final = {
     "run": "fix what stopped the run, then ow eval run --suite {suite}{subject}",
@@ -248,9 +288,25 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
     )
     board = [row for row in scoreboard(connection) if row.run_id in judged]
     said = {run.run_id: run.not_measured for run in runs}
+    unknown_rows = [row for row in board if row.standing == "UNKNOWN"]
     findings += [
-        _unknown(row, said.get(row.run_id, ())) for row in board if row.standing == "UNKNOWN"
+        _unknown(row, said.get(row.run_id, ()))
+        for row in unknown_rows
+        if row.metric not in DECLARED_UNKNOWN
     ]
+    #  D1017: a declared metric's UNKNOWN is a disclosure and not a gap. It keeps the detail the
+    #  run computed -- the population and why it is short -- so the report says 0 of 13 rather
+    #  than only that something was withheld, and carries the ruling as its fix.
+    disclosed += tuple(
+        Finding(
+            "declared-unknown",
+            f"{row.metric}@{row.slice_key} in {row.suite}/{row.subject} run {row.run_id}",
+            _unknown(row, said.get(row.run_id, ())).why,
+            DECLARED_UNKNOWN[row.metric],
+        )
+        for row in unknown_rows
+        if row.metric in DECLARED_UNKNOWN
+    )
     findings += [
         Finding(
             "perf", f"{row.budget_id} in run {row.run_id}", f"status {row.status}", _FIX["perf"]

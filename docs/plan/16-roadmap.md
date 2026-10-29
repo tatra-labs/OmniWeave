@@ -975,7 +975,7 @@ always tested less rigorously than the runtime it judges. *(Build note, D835: `t
 #### Exit criteria
 
 ```bash
-uv run ow eval release-check --strict                # zero unknown outside perf (D987); skip is not a state
+uv run ow eval release-check --strict                # zero unknown outside perf and false_confident_zero (D987, D1017); skip is not a state
 uv run tools/gate_bless.py                           # bless flow + test_bless_flag_is_off()
 uv run tools/gate_frozen_stability.py --pdfium-minors 2 --cells 9
 uv run tools/gate_measured_on.py                     # every published number's ten-field MeasuredOn
