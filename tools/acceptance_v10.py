@@ -194,20 +194,47 @@ CRITERIA: tuple[Criterion, ...] = (
         (
             tool("label_review.py"),
             pytest(f"{CORE}/test_label_review.py", label="the review page and its readers (D980)"),
+            pytest(
+                f"{CONF}/test_conform_structure.py",
+                label="structure_f1's harness and every committed reference (D982)",
+            ),
+            pytest(
+                f"{CONF}/test_conform_table_assertions.py",
+                label="every table and cell_rel judged on its real Grid (D1005)",
+            ),
+            pytest(
+                f"{CONF}/test_conform_slices.py",
+                label="every floor's glob matches a slice the corpus declares (D983)",
+            ),
         ),
         Coverage.PARTIAL,
-        # D980: the labels' own integrity is now measured, which is a different claim from the
-        # floors. `tools/label_review.py` reads each fixture's committed bytes with its own
-        # readers -- PDF content streams, `zipfile` + `ElementTree` -- and reports 110 of 110
-        # agreeing, 0 contradicted, 0 without evidence. That says the drafted claims are not
-        # wrong about the files; only a reviewer's signature makes one count toward a rate.
-        "eval/gates.toml carries no accuracy floor. `ow eval run --suite parse` now scores "
-        "`order_acc`, `table_rel_acc` and `field_acc` from a fixture's `.assertions.toml` over "
-        "the Markdown `ow` serves (D912). D913 drafted 110 labels over 14 fixtures and D980 holds "
-        "every one of them against the fixture bytes, read independently of any driver -- 110 "
-        "agree, none is contradicted, none is unreadable -- but not one is signed, so every rate "
-        "is still unknown until the reviewer rules on them (ruling 1 of 2026-10-23); "
-        "`structure_f1` and `doc_acc` have no harness",
+        # The labels' own integrity is measured, which is a different claim from the floors.
+        # `tools/label_review.py` reads each fixture's committed bytes with its own readers --
+        # PDF content streams, `zipfile` + `ElementTree` -- never through an omniweave driver.
+        # That says the drafted claims are not wrong about the files; only a reviewer's signature
+        # makes one count toward a rate.
+        "THE FLOORS EXIST AND THE POPULATIONS ARE THERE; NOT ONE ROW IS SIGNED. Since D983 "
+        "`eval/gates.toml` carries three blocking accuracy floors -- `structure_f1@office/*` at "
+        "0.90, `order_acc@pdf/born_digital/*` at 0.75, `table_rel_acc@*/has_merges=1` at 0.70 -- "
+        "each with 13-quality.md's `computed` text verbatim, and `test_conform_slices.py` holds "
+        "every glob to a slice the corpus declares, in both directions. `structure_f1` has had a "
+        "harness since D982 (`omniweave_conform.structure`); `doc_acc` still has none. "
+        "The populations, measured: 158 assertions over 17 fixtures and 277 structure reference "
+        "rows over 33 documents. `structure_f1` counts DOCUMENTS and `office/labelled` holds 33 "
+        "against `min_slice_n = 30` (D1002, D1004); `order_acc` counts VERDICTS and "
+        "`pdf/born_digital/contracts` holds 60 `order` assertions; `table_rel_acc` counts "
+        "verdicts from the TEXT evaluator and `office/has_merges=1` holds 33 `table` rows "
+        "(D1005). `tools/label_review.py` reads them all back against the committed bytes: of "
+        "the 158 labels 140 agree and 18 are the `cell_rel` rows it DECLARES unjudgeable -- a "
+        "Grid claim a flat byte-read grid would answer wrongly, judged instead by "
+        "`test_conform_table_assertions.py` on the real Grid -- and of the 277 reference rows "
+        "275 agree with 2 declared OMML transcriptions. NOTHING IS CONTRADICTED ANYWHERE. "
+        "What is missing is the signature and nothing else: `checked` is absent from every row, "
+        "an unchecked assertion runs and never scores (13:1022), and `structure` ruling 3 scores "
+        "a document only when EVERY row of its reference is verified. So all four rates read "
+        "`unknown` and `ow eval release-check` refuses them, which is checklist step 6's "
+        "behaviour working rather than failing. The reviewer's ruling is the one input left "
+        "(ruling 1 of 2026-10-23)",
     ),
     Criterion(
         "V10-4",
