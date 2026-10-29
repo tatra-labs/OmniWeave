@@ -167,8 +167,19 @@ def _vary(path: str, old: str, new: str) -> dict[str, str]:
 
 
 def test_the_repository_commits_its_goldens() -> None:
-    """D848: 26 documents, three drivers, three Reductions each."""
-    assert len(COMMITTED) == 78
+    """D848: every document, three Reductions each -- a `.shape`, a `.pages` and an `.outline`.
+
+    The count is DERIVED from the tree rather than typed: D1004's twenty labelled office documents
+    took it from 26 documents to 46, and what this test is for is the invariant that each one has
+    exactly its three Reductions under one of the three drivers, which a literal hides.
+    """
+    documents = {path.rsplit(".", 1)[0] for path in COMMITTED}
+    assert len(documents) == 46
+    assert len(COMMITTED) == 3 * len(documents)
+    for document in documents:
+        assert {path for path in COMMITTED if path.rsplit(".", 1)[0] == document} == {
+            f"{document}.{suffix}" for suffix in ("shape", "pages", "outline")
+        }
     assert {path.split("/")[1] for path in COMMITTED} == {
         "parse.office.anydoc@1",
         "parse.pdf.pdfium@1",

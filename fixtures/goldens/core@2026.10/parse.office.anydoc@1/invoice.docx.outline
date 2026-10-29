@@ -1,0 +1,24 @@
+owoutline/1  corpus=core@2026.10  doc=521c1b40ea6774d3fb9db8c0eb2a0558  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic da0a22e2 -
+p0/0 heading body extracted normalized 625af65a - Invoice 2026-114
+p0/2/r0c0 table_cell body extracted normalized 1902f617 -
+p0/2/r0c0/0 paragraph body extracted normalized b767ddda - Item
+p0/2/r0c1/0 paragraph body extracted normalized 5f3cdd5d - Hours
+p0/2/r0c2/0 paragraph body extracted normalized c30e85b3 - Amount
+p0/2/r1c0/0 paragraph body extracted normalized 978e5a49 - Index rebuild
+p0/2/r1c1/0 paragraph body extracted normalized 3b07e96a - 12
+p0/2/r1c2/0 paragraph body extracted normalized 866b91a0 - 960.00
+p0/2/r2c0/0 paragraph body extracted normalized 4263b325 - Reader training
+p0/2/r2c1/0 paragraph body extracted normalized 8ce705da - 4
+p0/2/r2c2/0 paragraph body extracted normalized f9c846c6 - 320.00
+p0/1 paragraph body extracted normalized 1912a3cd - Issued to the Northern Archive on 14 October 202
+p0/2/r0c1 table_cell body extracted normalized f8c30310 -
+p0/2 table body extracted normalized 45dcdfde -
+p0/2/r0c2 table_cell body extracted normalized 64cc1135 -
+p0/2/r1c0 table_cell body extracted normalized 5edb8d12 -
+p0/3 paragraph body extracted normalized 491d37b7 - Payable within thirty days of issue.
+p0/2/r1c1 table_cell body extracted normalized 38fe589e -
+p0/2/r1c2 table_cell body extracted normalized 7955b555 -
+p0/2/r2c0 table_cell body extracted normalized 715d1fe1 -
+p0/2/r2c1 table_cell body extracted normalized 4f8db1a8 -
+p0/2/r2c2 table_cell body extracted normalized f0106b02 -

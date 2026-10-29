@@ -1,0 +1,27 @@
+owoutline/1  corpus=core@2026.10  doc=5d93f9a49fa5668b8d609852c64eb9ae  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 0b838279 -
+p0/0 table body extracted normalized e3b5c509 -
+p0/0/r0c0 table_cell body extracted normalized b208832b -
+p0/0/r0c0/0 paragraph body extracted normalized b82bab7d - Shelf
+p0/0/r0c1/0 paragraph body extracted normalized c7be4f64 - Items
+p0/0/r0c2/0 paragraph body extracted normalized 7261ed66 - Condition
+p0/0/r0c3/0 paragraph body extracted normalized 5dd851ae - Checked
+p0/0/r1c0/0 paragraph body extracted normalized 675455b4 - A1
+p0/0/r1c1/0 paragraph body extracted normalized d289b46f - 214
+p0/0/r1c2/0 paragraph body extracted normalized 16393aae - good
+p0/0/r1c3/0 paragraph body extracted normalized ede9dabd - 2026-09-30
+p0/0/r2c0/0 paragraph body extracted normalized 2adbd02d - A2
+p0/0/r2c1/0 paragraph body extracted normalized d175de11 - 198
+p0/0/r2c2/0 paragraph body extracted normalized e92748e8 - fair
+p0/0/r2c3/0 paragraph body extracted normalized b5c30b00 - 2026-10-07
+p0/0/r0c1 table_cell body extracted normalized bdab44f1 -
+p0/0/r0c2 table_cell body extracted normalized 3ee6c73b -
+p0/0/r0c3 table_cell body extracted normalized 11bc3b9f -
+p0/0/r1c0 table_cell body extracted normalized 1b25b96a -
+p0/0/r1c1 table_cell body extracted normalized 97004289 -
+p0/0/r1c2 table_cell body extracted normalized 3a6c655f -
+p0/0/r1c3 table_cell body extracted normalized 73039e5c -
+p0/0/r2c0 table_cell body extracted normalized 3ef7fd17 -
+p0/0/r2c1 table_cell body extracted normalized c3aa91ea -
+p0/0/r2c2 table_cell body extracted normalized 311cb501 -
+p0/0/r2c3 table_cell body extracted normalized e2886f7e -

@@ -1,0 +1,8 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Retention policy"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "This policy covers every document the archive holds."}
+{"id": "s03", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "How long a record is kept"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "A reader request is kept for two years."}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "A catalogue record is kept indefinitely."}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Questions go to the records office."}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "footnote", "text": "Reviewed each January."}

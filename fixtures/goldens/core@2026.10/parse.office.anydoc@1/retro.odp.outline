@@ -1,0 +1,5 @@
+owoutline/1  corpus=core@2026.10  doc=519691b92303a4fe8e8a95580ee99ff5  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 5ce19d20 -
+p0/0 paragraph body extracted normalized 4fdaa686 - Retrospective, October
+p0/1 paragraph body extracted normalized 4db55bd2 - the index rebuild took half the time we budgeted
+p0/2 paragraph body extracted normalized e427d322 - the reader survey went out a week late
