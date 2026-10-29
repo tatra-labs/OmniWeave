@@ -307,7 +307,16 @@ CRITERIA: tuple[Criterion, ...] = (
         (
             # G22's whole run was about 21 minutes here (the ledger's measurement) and is about
             # two since D917, inside a 90-minute nightly cell; the hour is the older margin.
-            Instrument("tools/gate_scale.py", ("tools/gate_scale.py",), slow=True, timeout_s=3600),
+            Instrument(
+                "tools/gate_scale.py",
+                ("tools/gate_scale.py",),
+                slow=True,
+                timeout_s=3600,
+                #  D924: a breached bound is reported, a run that did not happen fails. Exit 1 is
+                #  the breach and exit 2 is "did not run" (the gate's own exit codes), so 1 is
+                #  reported here exactly as ci.yml's nightly step reports it.
+                reported=frozenset({1}),
+            ),
             pytest(f"{CLI}/test_gate_scale.py", label="G22's mechanism, 40-300 units"),
         ),
         Coverage.PARTIAL,
@@ -315,9 +324,15 @@ CRITERIA: tuple[Criterion, ...] = (
         "ruling of 2026-10-21), whose breach is reported and not a verdict; no ow-bench-1 runs "
         "it. The run is op.identify only, and the default asserts high_water "
         "plus one plan batch rather than the literal bound (`--strict` overshoots "
-        "structurally). Throughput passes 2,000 on the median since D919's group commit, "
-        "2,651 transitions/s over seven local runs (870 after D917's claim rulings, 504 "
-        "before), but two of the seven fell under it, on a workstation and not the nightly",
+        "structurally). THE THROUGHPUT BOUND IS BREACHED ON THIS MACHINE AND IS NOT A "
+        "REGRESSION: four idle runs on 2026-10-29 read 1,708 / 1,718 / 1,817 / 1,972 "
+        "transitions/s against the 2,000 bound, and the D919 COMMIT ITSELF -- the one whose "
+        "build note records a 2,651 median -- reads 1,718 /s on the same machine in the same "
+        "hour, run from a worktree against the same interpreter. So the gap between 2,651 and "
+        "today is the machine, not the code, which is the whole reason 12-performance.md "
+        "section 1 gives a Budget one pinned machine. D919's own note already says two of its "
+        "seven runs fell under 2,000, on a workstation and not the nightly. The breach is "
+        "REPORTED and not this table's verdict (D924, and Instrument.reported)",
     ),
     Criterion(
         "V10-8",
