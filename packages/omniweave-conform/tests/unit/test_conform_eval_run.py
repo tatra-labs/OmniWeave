@@ -794,11 +794,17 @@ def test_each_element_is_one_roundtrip_assertion_and_one_verdict(
     assert pptx_run.not_measured[0] == "R2: the gate is unverified; lower() is unreachable"
     docx_corpus = next(c for c in batch.corpora if c.corpus_id == docx_run.corpus_id)
     assert docx_run.corpus_id == "fixtures/out/golden/docx"
+    #  D1014: `n_assertions` is 0 and not the 2 elements judged here. This line asserted the 2,
+    #  which is what made the corpus row disagree with the portability suite's row for the same
+    #  `(corpus_id, version)` and refused whichever suite reached one `.oweval` second. Ruling 23
+    #  counts the corpus's own assertion files, and a golden output tree has none; the judged
+    #  total is on the metric's `n`, which the sibling test asserts.
     assert (docx_corpus.n_assertions, docx_corpus.n_checked, docx_corpus.publishable) == (
-        2,
+        0,
         0,
         False,
     )
+    assert len(batch.assertions) == 2, "the judged elements are still written, as assertion rows"
     ids = [a.assertion_id for a in batch.assertions]
     assert ids == [
         f"roundtrip/docx@{docx_corpus.version}/u01/e1",
@@ -846,6 +852,38 @@ def test_an_unjudged_target_is_an_unknown_run_release_check_refuses(
         connection.close()
     assert [f.kind for f in judged.findings] == ["run", "run"]
     assert "R2: no reader" in judged.findings[0].why
+
+
+def test_the_roundtrip_corpus_row_is_the_one_the_portability_suite_would_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D1014. `eval_corpus` is keyed by `(corpus_id, version)`, so one corpus RELEASE has one row,
+    and both the roundtrip and the portability suite describe `fixtures/out/golden/<target>` at
+    the same digest. This site used to write `n_assertions=len(judged.elements)` -- the elements
+    THIS run judged -- while portability writes ruling 23's 0, so whichever suite reached one
+    `.oweval` second was refused: *"already recorded with other content; a corpus version is
+    immutable"*. That refusal is what stopped `ow eval release-check` from ever seeing a complete
+    set of runs, which is checklist step 6.
+
+    The judge below returns TWO elements, so a row carrying the judged count would read 2 and this
+    test would fail; the count belongs on the metric's `n`, which is asserted here beside it.
+    """
+
+    def judge(target: Any) -> Any:
+        return _judged(
+            target,
+            r2_harness.Element("u01/e1", "heading", True, ""),
+            r2_harness.Element("u01/e2", "para", True, ""),
+        )
+
+    batch, done = _roundtrip(monkeypatch, judge)
+    assert batch.corpora, "the suite writes a corpus row per target"
+    for row in batch.corpora:
+        assert row == eval_run._golden_corpus(REPO, REPO / row.corpus_id, row.corpus_digest), (
+            "the roundtrip suite must write the row _golden_corpus builds, field for field"
+        )
+        assert row.n_assertions == 0, "ruling 23: a golden output tree carries no assertion files"
+    assert {one.n for one in done} == {2}, "the judged total lives on the metric, not the corpus"
 
 
 def test_a_roundtrip_suite_with_no_target_or_a_failing_target_is_a_refusal(
