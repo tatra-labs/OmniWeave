@@ -234,6 +234,32 @@ changed what every later number on it means.\
 # `office/<ext>` (with `has_merges=1` first on the three that have a merged cell) and the four
 # labelled PDFs `pdf/born_digital/gen`.
 #
+# AND SINCE D1002 each of the fourteen declares its family's COARSE slice beside that key:
+# `office/labelled` on the ten, `pdf/born_digital/labelled` on the four. Every row below
+# macro-averages at `min_slice_n = 30`, and one slice per family is the set that can reach it,
+# under a user ruling of 2026-10-28. Both coarse keys match the globs already written here --
+# `fnmatchcase("office/labelled", "office/*")` -- so no row changes, and the per-extension rows
+# stay visible beside them saying `unknown, under min_slice_n`, which is the honest report rather
+# than a hidden one. Q-G1 ruling 14 holds the coarse key to the labels in both directions.
+#
+# WHICH ROW THE SIDECAR'S SLICES REACH, AND WHAT EACH ROW COUNTS (D1003, measured, not assumed):
+#
+#   `structure_f1@office/*`      counts DOCUMENTS, and a `.structure.jsonl` row declares no
+#                                slices of its own, so all ten inherit the sidecar's and land on
+#                                `office/labelled`. 10 of 30. This is the row the corpus has to
+#                                GROW for: twenty more labelled office documents.
+#   `order_acc@pdf/born_digital/*`  counts VERDICTS, and an assertion's slices are its own when
+#                                it has any (`labels` ruling 4). All 79 PDF assertions declare
+#                                `pdf/born_digital/contracts`, 60 of them `order`, so this row's
+#                                population is ALREADY over `min_slice_n`: it computes as soon as
+#                                those sixty are verified, and no new PDF is needed for it.
+#   `table_rel_acc@*/has_merges=1`  counts VERDICTS too, and three assertions declare
+#                                `office/has_merges=1`. 3 of 30: twenty-seven more `table` or
+#                                `cell_rel` assertions on documents with a merged cell.
+#
+# So `pdf/born_digital/labelled` carries no verdict today. It is declared anyway, because the
+# family's name is the corpus's to declare and the next born-digital document joins it.
+#
 # WHAT THEY READ TODAY. Nothing is verified, so every rate is `unknown` and `release-check`
 # refuses it by that alone -- these rows do not make a release pass or fail yet. What they do is
 # stop Q-G27's ungated-metric clock (a `[[gate]]` row naming the metric stops it, whatever its

@@ -827,11 +827,24 @@ document with a merged cell declares `has_merges=1` first: the slice is a claim 
 which is where 13:1150 puts the corpus's own declaration, and `table_rel_acc` is the row that needs
 it."""
 
+COARSE = "office/labelled"
+"""D1002, a user ruling of 2026-10-28: the coarse slice every fixture in `SLICES` also declares.
+
+`SLICES` is exactly the labelled set, and every metric that reads a slice macro-averages at
+`min_slice_n = 30`, which no single extension will ever hold: the per-extension rows report
+`unknown` for ever. One coarse slice per family is the set that can reach thirty, and it is
+appended here rather than written into each row so that the family has one home. Q-G1 ruling 14
+derives the same key from the per-extension ones and holds the pair together in both directions."""
+
 TESTS = """
 [fixture.tests]
 # 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
 # `[[gate]]` row's `slice` glob is matched against it. The router's Slice is a different thing and
 # the harness never mixes them.
+# `{coarse}` is the coarse slice (D1002, a user ruling of 2026-10-28). The per-extension
+# key beside it will never hold `min_slice_n = 30` documents, so its row reports `unknown` for
+# ever; one slice per family is the set that can reach thirty, and the per-extension rows stay
+# visible saying what they are. Q-G1 holds the pair together.
 slices = [{slices}]
 """
 
@@ -860,8 +873,11 @@ def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str
     for a file it could not route.
     """
     media = f'media_type = "{media_type}"\n' if media_type else ""
-    slices = SLICES.get(name, ())
-    tests = TESTS.format(slices=", ".join(f'"{one}"' for one in slices)) if slices else ""
+    declared = SLICES.get(name)
+    tests = ""
+    if declared:
+        names = ", ".join(f'"{one}"' for one in (*declared, COARSE))
+        tests = TESTS.format(slices=names, coarse=COARSE)
     return SIDECAR.format(
         name=name,
         purpose=purpose,
