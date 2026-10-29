@@ -1111,18 +1111,16 @@ def roundtrip(
             ) from error
         ended = now_ns()
         digest = r2_half.golden_digest(target.golden)
-        corpus = Corpus(
-            corpus_id=target.golden.relative_to(root).as_posix(),
-            version=digest[:16],
-            corpus_digest=digest,
-            tier="A",
-            n_docs=len(judged.il_units),
-            n_assertions=len(judged.elements),
-            n_checked=0,
-            document_redistributable=True,
-            assertions_redistributable=True,
-            publishable=False,
-        )
+        #  D1014: `_golden_corpus` and not a row built here. `eval_corpus` is keyed by
+        #  (corpus_id, version), so a corpus RELEASE has one row, and this suite and the
+        #  portability suite both describe `fixtures/out/golden/<target>` at the same digest.
+        #  This site used to write `n_assertions=len(judged.elements)` -- the elements THIS RUN
+        #  judged, 7 for docx and 26 for pptx -- against portability's 0, and the second suite to
+        #  write into one `.oweval` was refused: "already recorded with other content; a corpus
+        #  version is immutable". Ruling 23 settles which is right: `n_assertions` counts the
+        #  corpus's own assertion files, a golden output tree has none, so 0 is the count and the
+        #  judged total belongs where it already is, on the metric row's `n`.
+        corpus = _golden_corpus(root, target.golden, digest)
         corpora.append(corpus)
         run_id = _run_id("roundtrip", judged.driver, digest, started)
         failed = tuple(f"{e.el} ({e.explanation})" for e in judged.elements if not e.passed)
