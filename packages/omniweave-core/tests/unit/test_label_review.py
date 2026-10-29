@@ -12,6 +12,15 @@ Three things are worth holding here.
 3. **A signature does not reformat the sidecar.** The files are hand-written and commented, and
    `autocrlf=true` leaves them CRLF in the working tree, so `_stamp` edits the signed row's lines
    and leaves every other byte -- line ending included -- where it was.
+4. **The structure references are the second population, and their unit is the DOCUMENT** (D1001).
+   The same three things hold, with one more: what this tool can judge about a reference row is
+   its TEXT and its POSITION, never its `(kind, layer, parent_kind)` triple, and the two rows it
+   cannot judge at all are named rather than guessed. The first run of the structure half reported
+   five of fifty-nine rows disagreeing with the bytes; three were the readers being narrower than
+   the formats (a DOCX footnote, a PPTX speaker note, an EPUB title in `content.opf`) and two were
+   OMML formulas whose transcription no byte reader can confirm. The readers were widened and the
+   transcription tier bounded to paragraphs that carry OMML, and the tests below hold both: a row
+   that is wrong is still wrong, in a formula paragraph and outside one.
 
 Loaded by file path under a private name at module scope, as `test_gate_measured_on.py` loads its
 gate.
@@ -320,7 +329,11 @@ def test_the_page_escapes_what_a_fixture_wrote() -> None:
         ]
     }
     page = TOOL.page_html(data)
-    assert "<script>" not in page
+    #  The page has a script of its OWN since D1001 -- the one that collects verdicts -- so the
+    #  assertion is that a fixture's text never becomes a second one, not that there are none.
+    assert page.count("<script>") == 1
+    assert "<script>alert" not in page
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in page
     assert "&lt;b&gt;not markup" in page
 
 
@@ -336,7 +349,7 @@ def test_main_exits_clean_over_the_tree(tmp_path: Path, capsys: pytest.CaptureFi
     printed = capsys.readouterr().out
     assert "carry a reviewer's signature" in printed
     assert json.loads(out.read_text(encoding="utf-8"))["fixtures"]
-    assert page.read_text(encoding="utf-8").startswith("<title>")
+    assert page.read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 def test_main_exits_two_when_a_row_has_no_evidence(tmp_path: Path) -> None:
@@ -356,3 +369,373 @@ def test_main_exits_one_when_a_claim_contradicts_the_bytes(tmp_path: Path) -> No
     )
     (sidecar.parent / "rows.csv").write_bytes(b"a,b\n1,2\n")
     assert TOOL.main(["--root", str(tmp_path)]) == TOOL.EXIT_DISAGREES
+
+
+# 4 -- the structure references: the second population, whose unit is the document.
+
+
+STRUCTURE = (
+    '{"schema": "omniweave.structure/1"}\n'
+    '{"id": "s01", "page": 1, "kind": "heading", "layer": "body", '
+    '"parent_kind": "document", "text": "Alpha"}\n'
+    '{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", '
+    '"parent_kind": "document", "text": "Beta"}\n'
+)
+
+
+def _reference(**over: object) -> object:
+    body: dict[str, object] = {
+        "sidecar": Path("f.docx.structure.jsonl"),
+        "fixture": Path("f.docx"),
+        "id": "s01",
+        "page": 1,
+        "kind": "paragraph",
+        "layer": "body",
+        "parent_kind": "document",
+        "text": "Hello",
+        "checked": None,
+    }
+    return TOOL.Reference(**{**body, **over})
+
+
+def test_every_committed_reference_row_agrees_with_the_bytes_or_is_named_unconfirmable() -> None:
+    """The committed references, read back off the fixtures. **Zero may disagree.**
+
+    A row the file contradicts is a defect to mend before a reviewer sees it, exactly as a drafted
+    assertion is. A row this tool cannot confirm is allowed and is counted: it is the formula
+    transcription case, and naming it is the alternative to calling the reference wrong.
+    """
+    readings = TOOL.read_structure(REPO)
+    disagree = [one for one in readings if one.agrees is False]
+    assert disagree == [], [one.why for one in disagree]
+    unknown = [one.reference.id for one in readings if one.agrees is None]
+    assert len(readings) == 59, "the committed population; a new reference belongs in this count"
+    assert unknown == ["s04", "s05"], "the two OMML rows of rich.docx and nothing else"
+
+
+def test_the_signature_unit_is_the_document_and_nothing_is_signed_yet() -> None:
+    """`structure` ruling 3: a document scores only when EVERY row of its reference is verified."""
+    grouped = TOOL.documents(TOOL.read_structure(REPO))
+    assert len(grouped) == 10
+    signed = {one.reference.checked for group in grouped.values() for one in group}
+    assert signed == {None}, "this repository has signed no reference row"
+
+
+def test_a_reference_row_the_bytes_do_not_carry_disagrees() -> None:
+    evidence = TOOL.Evidence("a test", runs=("Alpha", "Beta"), pages=(("Alpha", "Beta"),))
+    reading = TOOL._unmatched(_reference(text="Gamma"), evidence, evidence.runs, ["Alpha", "Beta"])
+    assert reading.agrees is False
+    assert "carries no text folding to 'Gamma'" in reading.why
+
+
+def test_a_transcription_is_unconfirmable_only_where_the_document_carries_a_formula() -> None:
+    """The tier's bound, which is the whole of why it is not an excuse.
+
+    `x2+1` and `x^{2}+1` are the same letters and digits with different notation. At a paragraph
+    the reader saw carry OMML that is a transcription it cannot confirm; at any other paragraph it
+    is a row that disagrees with the bytes, and the only difference is `Evidence.derived`.
+    """
+    runs = ("x2+1",)
+    row = _reference(text="x^{2}+1")
+    with_math = TOOL.Evidence("a test", runs=runs, pages=(runs,), derived=(0,))
+    without = TOOL.Evidence("a test", runs=runs, pages=(runs,))
+    assert TOOL._unmatched(row, with_math, runs, list(runs)).agrees is None
+    assert TOOL._unmatched(row, without, runs, list(runs)).agrees is False
+
+
+def test_a_formula_paragraph_does_not_excuse_a_row_that_invents_content() -> None:
+    """The subsequence is of the BYTES' letters, so a row may add notation and never content."""
+    runs = ("x2+1",)
+    evidence = TOOL.Evidence("a test", runs=runs, pages=(runs,), derived=(0,))
+    assert TOOL._unmatched(_reference(text="y^{3}+2"), evidence, runs, list(runs)).agrees is False
+    assert TOOL._transcribes("x2+1", TOOL.letters("x^{2}+1")) is True
+    assert TOOL._transcribes("x2+1", TOOL.letters("x^{3}+1")) is False
+
+
+def _tree(tmp_path: Path, *texts: str) -> Path:
+    """A one-fixture tree: a CSV of three cells, and a reference naming `texts` in that order."""
+    where = tmp_path / "packages" / "p" / "fixtures"
+    where.mkdir(parents=True)
+    (where / "f.csv").write_text("Alpha,Beta,Gamma\n", encoding="utf-8", newline="")
+    rows = ['{"schema": "omniweave.structure/1"}']
+    rows += [
+        json.dumps(
+            {
+                "id": f"s{index:02d}",
+                "page": 1,
+                "kind": "paragraph",
+                "layer": "body",
+                "parent_kind": "table_cell",
+                "text": text,
+            }
+        )
+        for index, text in enumerate(texts, start=1)
+    ]
+    (where / "f.csv.structure.jsonl").write_text(
+        "\n".join(rows) + "\n", encoding="utf-8", newline=""
+    )
+    return tmp_path
+
+
+def test_a_reference_in_the_documents_own_order_agrees(tmp_path: Path) -> None:
+    readings = TOOL.read_structure(_tree(tmp_path, "Alpha", "Beta", "Gamma"))
+    assert [one.agrees for one in readings] == [True, True, True]
+    assert [one.at for one in readings] == [0, 1, 2]
+
+
+def test_a_reference_out_of_the_documents_own_order_is_a_finding(tmp_path: Path) -> None:
+    """The defect a reviewer reading row by row would never see: every row is in the file, and
+    the rows are not in the order the file carries them."""
+    readings = TOOL.read_structure(_tree(tmp_path, "Alpha", "Gamma", "Beta"))
+    assert [one.agrees for one in readings] == [True, True, False]
+    assert "BEFORE the previous row's 2" in readings[2].why
+
+
+def test_the_docx_reader_reaches_the_footnote_part() -> None:
+    """D1001: `word/footnotes.xml` is a separate part, and `rich.docx`'s last row is in it."""
+    evidence = TOOL.read_evidence(REPO / "packages/omniweave-office/fixtures/rich.docx")
+    assert "Unaudited figures." in evidence.runs
+    assert "footnotes.xml" in evidence.origin
+
+
+def test_the_pptx_reader_reaches_the_speaker_note_part() -> None:
+    """D1001: a row carrying `layer = "note"` is a claim about `ppt/notesSlides/`."""
+    evidence = TOOL.read_evidence(REPO / "packages/omniweave-office/fixtures/deck.pptx")
+    assert "Mention the backlog only if asked." in evidence.runs
+    assert "notesSlides" in evidence.origin
+
+
+def test_the_epub_reader_reaches_the_package_title() -> None:
+    """D1001: an EPUB's title is `content.opf` metadata; the XHTML does not carry it."""
+    evidence = TOOL.read_evidence(REPO / "packages/omniweave-office/fixtures/book.epub")
+    assert evidence.runs[0] == "A very short book"
+    assert "dc:title" in evidence.origin
+
+
+def test_the_math_index_counts_the_paragraphs_the_text_walk_counts() -> None:
+    """Off by one here and the tier excuses the wrong paragraph, which is worse than not having
+    it: a blank paragraph is dropped by `_paragraphs` and must be dropped by this too."""
+    document = TOOL._members(
+        REPO / "packages/omniweave-office/fixtures/rich.docx",
+        TOOL.re.compile(r"^word/document\.xml$"),
+    )[0]
+    runs = TOOL._paragraphs(document)
+    for index in TOOL._math_paragraphs(document):
+        assert index < len(runs)
+        assert runs[index] in {"x2+1", "The ratio ab"}
+
+
+def test_signing_a_document_writes_one_verdict_into_every_row(tmp_path: Path) -> None:
+    sidecar = tmp_path / "f.docx.structure.jsonl"
+    sidecar.write_text(STRUCTURE, encoding="utf-8", newline="")
+    blob, count = TOOL.signed_document(sidecar, "verified")
+    assert count == 2
+    rows = [json.loads(line) for line in blob.decode("utf-8").splitlines()[1:]]
+    assert [row["checked"] for row in rows] == ["verified", "verified"]
+    assert [row["id"] for row in rows] == ["s01", "s02"]
+
+
+def test_signing_does_not_reach_disk_and_keeps_the_header(tmp_path: Path) -> None:
+    sidecar = tmp_path / "f.docx.structure.jsonl"
+    sidecar.write_text(STRUCTURE, encoding="utf-8", newline="")
+    blob, _count = TOOL.signed_document(sidecar, "rejected")
+    assert sidecar.read_text(encoding="utf-8") == STRUCTURE, "staged, never written here"
+    assert blob.decode("utf-8").splitlines()[0] == '{"schema": "omniweave.structure/1"}'
+
+
+def test_a_row_the_verdict_does_not_change_round_trips_byte_for_byte(tmp_path: Path) -> None:
+    """`json.dumps`' default separators are the ones these files use, so signing a file twice is
+    the same bytes -- which is what makes a diff of a review readable."""
+    sidecar = tmp_path / "f.docx.structure.jsonl"
+    sidecar.write_text(STRUCTURE, encoding="utf-8", newline="")
+    once, _ = TOOL.signed_document(sidecar, "verified")
+    sidecar.write_bytes(once)
+    twice, _ = TOOL.signed_document(sidecar, "verified")
+    assert twice == once
+
+
+def test_apply_refuses_a_per_row_verdict_for_a_structure_reference(tmp_path: Path) -> None:
+    """The shape chooses the population, so the wrong shape is refused by name."""
+    sidecar = tmp_path / "f.docx.structure.jsonl"
+    sidecar.write_text(STRUCTURE, encoding="utf-8", newline="")
+    with pytest.raises(SystemExit, match="ONE verdict for the document"):
+        TOOL.apply_verdicts(tmp_path, {"f.docx.structure.jsonl": {"s01": "verified"}})
+    assert sidecar.read_text(encoding="utf-8") == STRUCTURE
+
+
+def test_apply_refuses_a_document_verdict_for_an_assertions_sidecar(tmp_path: Path) -> None:
+    sidecar = tmp_path / "f.assertions.toml"
+    sidecar.write_text(SIDECAR, encoding="utf-8", newline="")
+    with pytest.raises(SystemExit, match="one verdict per row"):
+        TOOL.apply_verdicts(tmp_path, {"f.assertions.toml": "verified"})
+    assert sidecar.read_text(encoding="utf-8") == SIDECAR
+
+
+def test_apply_refuses_a_document_verdict_outside_the_two(tmp_path: Path) -> None:
+    sidecar = tmp_path / "f.docx.structure.jsonl"
+    sidecar.write_text(STRUCTURE, encoding="utf-8", newline="")
+    with pytest.raises(SystemExit, match="'approved' is not one of"):
+        TOOL.apply_verdicts(tmp_path, {"f.docx.structure.jsonl": "approved"})
+    assert sidecar.read_text(encoding="utf-8") == STRUCTURE
+
+
+def test_one_refused_document_stops_every_write(tmp_path: Path) -> None:
+    good = tmp_path / "a.docx.structure.jsonl"
+    bad = tmp_path / "b.docx.structure.jsonl"
+    for path in (good, bad):
+        path.write_text(STRUCTURE, encoding="utf-8", newline="")
+    with pytest.raises(SystemExit):
+        TOOL.apply_verdicts(
+            tmp_path,
+            {"a.docx.structure.jsonl": "verified", "b.docx.structure.jsonl": "approved"},
+        )
+    assert good.read_text(encoding="utf-8") == STRUCTURE
+
+
+def test_the_structure_bundle_is_keyed_by_document_and_says_what_it_does_not_judge() -> None:
+    data = TOOL.structure_bundle(TOOL.read_structure(REPO), REPO)
+    assert data["schema"] == "omniweave.structure-review/1"
+    assert len(data["documents"]) == 10
+    assert "per DOCUMENT" in data["note"]
+    assert "kind, layer, parent_kind) is the reviewer's judgement" in data["note"]
+    first = data["documents"][0]
+    assert first["reference"].endswith(".structure.jsonl")
+    assert all("claim" in row and "why" in row for row in first["rows"])
+
+
+def test_the_page_carries_both_populations_and_says_which_unit_each_signs() -> None:
+    rows = TOOL.review(REPO)
+    page = TOOL.page_html(
+        TOOL.bundle(rows, REPO), TOOL.structure_bundle(TOOL.read_structure(REPO), REPO)
+    )
+    assert "Structure references" in page
+    assert "per document, not per row" in page
+    assert "packages/omniweave-office/fixtures/rich.docx" in page
+    for one in TOOL.read_structure(REPO):
+        assert TOOL._esc(one.reference.text) in page
+
+
+def test_the_page_without_a_structure_bundle_is_the_assertions_page() -> None:
+    """The second argument is optional, so the first population's page is unchanged by D1001."""
+    page = TOOL.page_html(TOOL.bundle(TOOL.review(REPO), REPO))
+    assert "Structure references" not in page
+
+
+def _page() -> str:
+    return TOOL.page_html(
+        TOOL.bundle(TOOL.review(REPO), REPO),
+        TOOL.structure_bundle(TOOL.read_structure(REPO), REPO),
+    )
+
+
+def test_the_page_carries_one_control_per_assertion_and_one_per_document() -> None:
+    """D1001: a page with no way to record a verdict is not a page that prepares a signature.
+
+    110 assertions sign one at a time and 10 references sign whole, which is `structure` ruling
+    3's unit, and the count of controls is the two populations added rather than a number typed
+    here: a drafted label or a new reference moves it.
+    """
+    page = _page()
+    labels = len(TOOL.review(REPO))
+    files = len(TOOL.documents(TOOL.read_structure(REPO)))
+    assert page.count("class=verdict data-key=") == labels + files
+    assert page.count("value=verified") == labels + files
+
+
+def test_every_control_is_keyed_the_way_apply_reads_it() -> None:
+    """The export is `--apply`'s own grammar, so the keys are the paths that file names: a row of
+    an assertions sidecar as `<path>::<id>`, a whole reference as `<path>`."""
+    page = _page()
+    for row in TOOL.review(REPO):
+        key = f"{TOOL._posix(row.claim.sidecar, REPO)}::{row.claim.id}"
+        assert f'data-key="{key}"' in page
+    for sidecar in TOOL.documents(TOOL.read_structure(REPO)):
+        key = TOOL._posix(sidecar, REPO)
+        assert f'data-key="{key}"' in page
+        assert f'data-key="{key}::' not in page, "a reference signs whole, never row by row"
+
+
+def test_the_page_is_a_whole_document_that_scales_on_a_phone() -> None:
+    page = _page()
+    assert page.startswith("<!doctype html>")
+    assert '<meta charset="utf-8">' in page
+    assert 'name="viewport"' in page
+
+
+def test_the_page_says_nothing_is_written_until_the_command_runs() -> None:
+    """The tool's own rule, on the page that collects: this file never writes a signature."""
+    page = _page()
+    assert "--apply" in page
+    assert "Nothing is written until you run that command." in page
+
+
+def test_a_reference_whose_header_is_not_the_schema_stops_the_read(tmp_path: Path) -> None:
+    """Ruling 1's header, enforced: a reference with no version is one nothing else will read."""
+    (tmp_path / "packages" / "p" / "fixtures").mkdir(parents=True)
+    bad = tmp_path / "packages" / "p" / "fixtures" / "f.docx.structure.jsonl"
+    bad.write_text('{"schema": "something/9"}\n', encoding="utf-8", newline="")
+    with pytest.raises(SystemExit, match="first line is not"):
+        TOOL.references(tmp_path)
+
+
+# 5 -- TRANSCRIBED: the two rows no byte reader can confirm, declared and checked both ways.
+
+
+def test_the_declaration_matches_the_tree_exactly() -> None:
+    """Both directions over the real tree, which is the only statement that matters here."""
+    assert TOOL.transcription_findings(TOOL.read_structure(REPO), REPO) == []
+    assert len(TOOL.TRANSCRIBED) == 2
+
+
+def test_an_undeclared_transcription_is_a_finding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Otherwise a second one arrives silently and the exit code keeps saying clean."""
+    monkeypatch.setattr(TOOL, "TRANSCRIBED", ())
+    findings = TOOL.transcription_findings(TOOL.read_structure(REPO), REPO)
+    assert len(findings) == 2
+    assert all("not in TRANSCRIBED" in one for one in findings)
+
+
+def test_a_declaration_for_a_row_that_now_reads_cleanly_is_a_finding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A declaration that stopped being true is a comment, so the stale direction fails too."""
+    monkeypatch.setattr(
+        TOOL,
+        "TRANSCRIBED",
+        (
+            *TOOL.TRANSCRIBED,
+            (
+                "packages/omniweave-office/fixtures/rows.csv.structure.jsonl",
+                "s01",
+                "region",
+                "region",
+            ),
+        ),
+    )
+    findings = TOOL.transcription_findings(TOOL.read_structure(REPO), REPO)
+    assert len(findings) == 1
+    assert "declared a transcription and now reads True" in findings[0]
+
+
+def test_a_declaration_whose_recorded_strings_drifted_is_a_finding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The declaration records WHAT the bytes say, so a fixture edit that changes it fails here
+    rather than leaving a reviewer reading a sentence about a file that moved."""
+    path, label, _said, says = TOOL.TRANSCRIBED[0]
+    monkeypatch.setattr(
+        TOOL, "TRANSCRIBED", ((path, label, "something else", says), TOOL.TRANSCRIBED[1])
+    )
+    findings = TOOL.transcription_findings(TOOL.read_structure(REPO), REPO)
+    assert len(findings) == 1
+    assert "TRANSCRIBED records 'something else'" in findings[0]
+
+
+def test_main_exits_clean_with_the_declaration_and_two_without_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The reason the declaration exists: a permanent exit 2 is an exit code that says nothing."""
+    assert TOOL.main([]) == TOOL.EXIT_CLEAN
+    monkeypatch.setattr(TOOL, "TRANSCRIBED", ())
+    assert TOOL.main([]) == TOOL.EXIT_NO_EVIDENCE
+    assert "TRANSCRIBED:" in capsys.readouterr().out
