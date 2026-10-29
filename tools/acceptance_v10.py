@@ -572,15 +572,26 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CONF}/test_conform_cell_rel_parsed.py",
                 label="cell_rel over a parsed DOCX, the table and its transpose (D932)",
             ),
+            pytest(
+                f"{CONF}/test_conform_table_assertions.py",
+                label="every committed table and cell_rel judged on its real Grid (D1005)",
+            ),
         ),
         Coverage.PARTIAL,
-        "the planted defects are synthetic stand-ins for sec-exhibit-scan and "
-        "xlsx-merged-4m-cells, which are not in the tree. Since D932 the parse suite hands "
-        "judge() each labelled fixture's parsed Doc, and a transposed table in a real parsed DOCX "
-        "fails every cell_rel while the untouched one passes; no committed label is a cell_rel "
-        "yet, and table_rel_acc rolls up the text evaluator's verdicts only (D816 ruling 1), so a "
-        "cell_rel's owdoc verdict is recorded and not in that rate (13:1262's hallucination_rate "
-        "claim was dropped by ruling, D900: 13:1096 defines it over field assertions)",
+        "sec-exhibit-scan and xlsx-merged-4m-cells are still not in the tree, so the DROPPED PAGE "
+        "and the FABRICATED QUOTE remain synthetic: Q-G23's planted defects carry them. The "
+        "TRANSPOSED TABLE no longer is. D932 handed judge() each labelled fixture's parsed Doc, "
+        "and D1005 committed the labels that half was waiting for -- 18 cell_rel rows and 30 "
+        "table rows over three merged-cell documents in three encodings of one grid "
+        "(w:gridSpan, mergeCell, and ODF's spanned-plus-covered pair), every relation read off "
+        "the parsed Grid and judged on it by test_conform_table_assertions.py. What stays true "
+        "and is worth keeping written down: table_rel_acc rolls up the TEXT evaluator only "
+        "(D816 ruling 1, with eval_run passing evaluator='text'), so a cell_rel runs on owdoc "
+        "and its verdict is recorded outside that rate -- which is why the 30 table rows carry "
+        "the population and the 18 cell_rel rows carry the merge. The slice holds 33 against "
+        "min_slice_n = 30 and every row is unsigned, so the floor still reads unknown until a "
+        "reviewer signs (13:1022). 13:1262's hallucination_rate claim was dropped by ruling "
+        "(D900: 13:1096 defines it over field assertions)",
     ),
     Criterion(
         "V10-17",
