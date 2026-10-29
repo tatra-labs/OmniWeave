@@ -87,7 +87,7 @@ import hashlib
 import shutil
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeAlias
 
@@ -104,7 +104,6 @@ from omniweave.route.spend import Spend
 from omniweave.run.dispatch import Batch, call_attributes, fan_out
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
-    from collections.abc import Iterator
     from pathlib import Path
 
     from omniweave_core.budget import BudgetLedger, Reservation
@@ -1007,7 +1006,7 @@ class RetryGuard:
             return len(self._locks)
 
     @contextlib.contextmanager
-    def hold(self, keys: Sequence[tuple[str, str]]) -> Iterator[None]:
+    def hold(self, keys: Sequence[tuple[str, str]]) -> Generator[None]:
         """Hold every key of a call, in sorted order, for the duration of the block.
 
         **Sorted**, which is the one thing that keeps a batch from deadlocking against another batch

@@ -96,7 +96,7 @@ from typing import TYPE_CHECKING, Any, Final, cast
 from omniweave_core.errors import UsageError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 
     from omniweave_core.answer.pack import Packed
     from omniweave_core.answer.render import Answer
@@ -486,7 +486,7 @@ class Corpus:
         return Doc(_DocRead(self._store), doc_ord, gen)
 
     @contextlib.contextmanager
-    def session(self, key: str | None = None) -> Iterator[Session]:
+    def session(self, key: str | None = None) -> Generator[Session]:
         """18:470: the emission ledger across calls, cleared when the block exits (ruling 10)."""
         from omniweave_core.clock import SystemClock  # noqa: PLC0415
 

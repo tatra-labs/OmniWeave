@@ -106,7 +106,7 @@ import os
 import shutil
 import socket
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -933,7 +933,7 @@ class _ClassGate:
         return max(1, min(units, self._bound))
 
     @asynccontextmanager
-    async def hold(self, units: int) -> AsyncIterator[int]:
+    async def hold(self, units: int) -> AsyncGenerator[int]:
         """Hold `want(units)` permits for the body. Releases every one of them on any exit."""
         want = self.want(units)
         async with self._turn:
@@ -1024,7 +1024,7 @@ class _Exclusion:
         self._holder = ""
 
     @contextmanager
-    def claim(self, holder: str) -> Iterator[None]:
+    def claim(self, holder: str) -> Generator[None]:
         """Hold the process for `holder`, or refuse with `StoreError` naming the one that has it."""
         if not self._gate.acquire(blocking=False):
             raise StoreError(
@@ -1259,7 +1259,7 @@ class Supervisor:
         return PauseGate(claimable, admission=self._admission, emit=self._emit)
 
     @asynccontextmanager
-    async def render(self) -> AsyncIterator[None]:
+    async def render(self) -> AsyncGenerator[None]:
         """One CPU rasterisation slot, `max(1, cpus - 2)` of them. olmocr `pipeline.py:87`.
 
         Exposed and not used: the loop does not rasterise, and 08:674-676 is why the slot is

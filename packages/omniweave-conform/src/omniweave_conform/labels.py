@@ -62,7 +62,7 @@ from omniweave_conform.assertions import OWDOC_ONLY
 from omniweave_conform.stored import STORE, into_store
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Generator, Mapping
     from pathlib import Path
 
     from omniweave_core.drivers.card import DriverCard
@@ -244,7 +244,7 @@ def candidate(
 
 
 @contextmanager
-def opened(stores: Mapping[str, Path]) -> Iterator[dict[str, Doc]]:
+def opened(stores: Mapping[str, Path]) -> Generator[dict[str, Doc]]:
     """Each labelled document's candidate store, read back as the `Doc` it holds. **D932.**
 
     `stores` maps a doc name to the `STORE` path `candidate()` wrote. The page text `candidate()`

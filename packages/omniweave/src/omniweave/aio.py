@@ -42,7 +42,13 @@ from typing import TYPE_CHECKING, Any
 from omniweave.sdk import api
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterator,
+        Iterable,
+        Mapping,
+        Sequence,
+    )
     from pathlib import Path
     from types import TracebackType
 
@@ -208,7 +214,7 @@ class AsyncCorpus:
         return await asyncio.to_thread(self._inner.doc, ref)
 
     @contextlib.asynccontextmanager
-    async def session(self, key: str | None = None) -> AsyncIterator[AsyncSession]:
+    async def session(self, key: str | None = None) -> AsyncGenerator[AsyncSession]:
         """`Corpus.session()`, its calls on a worker thread (ruling 6)."""
         with self._inner.session(key) as inner:
             yield AsyncSession(inner)

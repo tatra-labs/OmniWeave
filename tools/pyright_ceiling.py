@@ -74,10 +74,15 @@ CEILING: Final[dict[str, int]] = {
     "reportUndefinedVariable": 45,
     #  Real findings, every one. Grouped so a fix names its rule in the diff.
     "reportArgumentType": 37,
-    #  21 are `@contextmanager` annotated `-> Iterator[T]`, which typeshed now marks deprecated in
-    #  favour of `-> Generator[T]`; one is `os.stat_result.st_ctime` on Windows, where typeshed
-    #  points at `st_birthtime`.
-    "reportDeprecated": 22,
+    #  FIXED, D1006: all 22 were a `@contextmanager` or `@asynccontextmanager` annotated
+    #  `-> Iterator[T]` / `-> AsyncIterator[T]`, which typeshed marks deprecated in favour of
+    #  `-> Generator[T]` and `-> AsyncGenerator[T]`. Each return type was changed at the site
+    #  pyright named -- the DECORATOR line, with the annotation on the signature below it -- and
+    #  the imports followed. The row stays at 0 rather than leaving the table, because a rule
+    #  absent here and present in a run is a defect class nobody has looked at, and 0 is the
+    #  claim that this one is clean rather than unexamined. The `os.stat_result.st_ctime` note
+    #  this comment used to carry does not fire: nothing in the measured run reports it.
+    "reportDeprecated": 0,
     #  A name imported from a module that re-exports it without `__all__`. The fix is to import
     #  from the module that declares it, which D997 did for two of the sixteen.
     "reportPrivateImportUsage": 14,

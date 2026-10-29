@@ -9,7 +9,7 @@ open group's child boxes, from which the group's own box is made.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from types import ModuleType
@@ -146,7 +146,7 @@ class Emitter:
         self.boxes[-1].append(placed)
 
     @contextmanager
-    def group(self, made: Any) -> Iterator[list[Placed]]:
+    def group(self, made: Any) -> Generator[list[Placed]]:
         """Shapes made inside go into `made`; the boxes they took are yielded to its maker."""
         outer = self.tree
         self.tree = made
