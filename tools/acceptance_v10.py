@@ -137,12 +137,20 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "no `v*` tag to be green on; `ow eval run` measures parse, absence, retrieve, "
+        "no `v*` tag to be green on -- and since D1016 nothing in this repository prevents one, "
+        "because `release.yml`'s publish half is gated off and the `release` environment is no "
+        "longer needed (see V10-11). `ow eval run` measures parse, absence, retrieve, "
         "roundtrip and portability, every hard gate holds over them, and `ow eval release-check` "
-        "refuses only the drafted labels' unverified rates (D868-D871, D903, D913); `--strict` "
-        "refuses `perf` alone, and `extract` is not applicable at this release -- no "
+        "refuses ONLY the drafted labels' unverified rates (D868-D871, D903, D913) -- four "
+        "findings, measured: `order_acc` over office's 15 and pdf's 60, `table_rel_acc` over "
+        "office's 40, and `structure_f1` over 33 of 33 documents with 277 reference rows "
+        'unsigned, each naming `checked = "verified"` as its fix. `--strict` '
+        "refuses `perf` alone; `extract` is not applicable at this release -- no "
         "field-extraction driver ships -- so its run is a disclosure the report prints and the "
-        "verdict does not count (D987, a user ruling of 2026-10-26); "
+        "verdict does not count (D987, a user ruling of 2026-10-26); and `false_confident_zero` "
+        "is a DECLARED unknown that is reported and does not refuse (D1017, a user ruling of "
+        "2026-10-29), because 13 answerable questions is the whole population against "
+        "`min_slice_n = 30` and no signature can move it; "
         "and no "
         "`.oweval` is committed for a tag; G13 has no runner, and G25, a CI step and not a "
         "`tools/` script, is `ow surface emit --check`, run here (D960). "
@@ -481,11 +489,17 @@ CRITERIA: tuple[Criterion, ...] = (
         # vacuous, and both runs exit 0 either way: a vacuous G16 is a pass by 16-roadmap.md:516.
         "the clause is two releases and master carries one tag, so the `--releases 2` run stays "
         "vacuous until the next milestone tag; `--releases 1` loads `v0.1.0`'s template Driver "
-        "against HEAD for real (D979). The tag is local, and what keeps it local changed at D984: "
-        "every third-party action in `release.yml` is SHA-pinned now, so the remaining blocker is "
-        "the approval pause itself -- pushing a `v*` tag starts the publish workflow and the "
-        "repository has zero environments, so there is no reviewer gate to pause at. Until the "
-        "tag is pushed, a CI or fresh-clone run of this row finds no tag and passes vacuously",
+        "against HEAD for real (D979). THE TAG IS LOCAL, AND NOTHING IN THIS REPOSITORY KEEPS IT "
+        "SO ANY MORE. Two blockers have been discharged in order: D984 SHA-pinned every "
+        "third-party action in `release.yml`, and D1016 -- a user ruling of 2026-10-29 -- gated "
+        "its publish half off, so `sbom-sign` and `publish` carry "
+        "`if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'` against an unset repository variable. "
+        "An environment gates only the jobs that declare one and `publish` is the only one, so a "
+        "skipped `publish` never reaches a reviewer gate: the `release` environment the old text "
+        "called the remaining blocker is NOT NEEDED at v1.0, and a `v*` tag now runs tag-guard, "
+        "ci, build and provenance and stops. What is left is the push itself, which is the "
+        "reviewer's to make. Until it happens, a CI or fresh-clone run of this row finds no tag "
+        "and passes vacuously",
     ),
     Criterion(
         "V10-12",

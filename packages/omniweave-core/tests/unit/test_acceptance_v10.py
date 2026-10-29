@@ -39,6 +39,36 @@ def _load() -> ModuleType:
 a = _load()
 
 
+def test_v10_11s_gap_text_describes_the_release_workflow_this_tree_has() -> None:
+    """D1019. V10-11's gap used to call the `release` environment the remaining blocker, which
+    D1016 discharged in the same cell as this test.
+
+    A gap text is prose and no instrument reads it, which is exactly how V10-16's and V10-3's went
+    stale and had to be re-measured (D1007, D1009). So this one is held against the workflow it
+    describes: the condition is asserted as the literal both files carry, and if the publish half
+    is ever ungated this test is what says the row is lying.
+    """
+    gate = "vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'"
+    row = next(one for one in a.CRITERIA if one.id == "V10-11")
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    #  Over the LINES that are the key, not a substring search: the file's own header quotes the
+    #  condition in prose, so `f"if: {gate}" in workflow` passes on a workflow where both real
+    #  `if:` keys have been deleted -- which is what the mutation proved before this was fixed.
+    gated = [one for one in workflow.splitlines() if one.strip() == f"if: {gate}"]
+    assert len(gated) == 2, (
+        f"release.yml gates {len(gated)} job(s) on the publish variable, not the two D1016 names"
+    )
+    assert gate in row.gap, "V10-11's gap text does not name the condition release.yml carries"
+    assert "NOT NEEDED at v1.0" in row.gap, "the consequence a reader needs is the environment's"
+    #  And the claim that makes it true: an environment gates only the jobs declaring one. Counted
+    #  over lines that ARE the key, not occurrences of the words -- the header and the job's own
+    #  name mention it too, which is how this first read 4.
+    declaring = [one for one in workflow.splitlines() if one.strip() == "environment: release"]
+    assert len(declaring) == 1, (
+        "a second environment-gated job would make the skipped-publish argument incomplete"
+    )
+
+
 def test_only_v10_7_declares_a_reported_exit_and_only_for_the_breach() -> None:
     """D1008, implementing D924: *"A breached G22 bound is reported beside the runner and does not
     fail; a run that did not happen does."* `tools/gate_scale.py` exits 1 on a breach and 2 when
