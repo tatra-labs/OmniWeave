@@ -626,17 +626,147 @@ def test_a_cassette_and_the_cassette_store_have_their_caps() -> None:
     ]
 
 
-def test_a_docs_fixture_makes_the_scan_floor_fail_closed() -> None:
-    doc = "fixtures/docs/sec-10k.pdf"
-    spent = GATE.budget({doc: 10}, [doc])
+SEC = "fixtures/docs/sec-10k.pdf"
+BORN = "fixtures/docs/born.pdf"
+
+
+def test_a_docs_fixture_that_declares_no_imaging_leaves_the_floor_uncomputed() -> None:
+    """D1018 replaced ruling 10's fail-closed with a measurement, and this is what remains of it:
+    with one document undeclared the share is NOT computed, because a corpus whose provenance is
+    incomplete cannot be shown to meet a floor.
+
+    It is a note and not a second finding on purpose. Q-G1's `check_imaging` names the sidecar,
+    and saying it twice would make a reader mend one line and expect two findings to clear.
+    """
+    spent = GATE.budget({SEC: 10}, [SEC])
+    assert spent.findings == ()
+    assert (
+        "the 40% scan floor: not computed, 1 of 1 fixture(s) declare no imaging (Q-G1 names them)"
+        in spent.notes
+    )
+
+
+def test_the_scan_floor_is_measured_over_the_documents_that_declare() -> None:
+    """Ruling 10, now a real arithmetic: `scan` over every document under `fixtures/docs/`."""
+    spent = GATE.budget({SEC: 10, BORN: 10}, [SEC, BORN], None, {SEC: "scan", BORN: "born_digital"})
+    assert spent.findings == ()
+    assert "the 40% scan floor: 1 of 2 fixture(s) are scans, 50%" in spent.notes
+
+
+def test_a_corpus_under_the_floor_is_a_finding_naming_the_share() -> None:
+    """The other direction, and the whole point of the clause: 13-quality.md section 4.1's
+    *"at least 40% of `fixtures/docs/` must be real public-domain scans"*. One scan in three is
+    33%, and a wholly synthetic corpus flatters the parser -- which is why the floor exists."""
+    third = ["fixtures/docs/a.pdf", "fixtures/docs/b.pdf", "fixtures/docs/c.pdf"]
+    imaging = {third[0]: "scan", third[1]: "born_digital", third[2]: "born_digital"}
+    spent = GATE.budget(dict.fromkeys(third, 10), third, None, imaging)
     assert [(one.path, one.detail) for one in spent.findings] == [
         (
             "fixtures/docs/",
-            "1 fixture(s), and the 40% scan floor cannot be measured: no sidecar key says a "
-            "document is a scan (13-quality.md section 4.4)",
+            "1 of 3 fixture(s) are scans, 33%, under the 40% floor (13-quality.md section 4.1)",
         )
     ]
-    assert not any("scan floor" in note for note in spent.notes)
+    #  Exactly on the floor passes: 2 of 5 is 40%, and the clause reads "at least".
+    five = [f"fixtures/docs/{n}.pdf" for n in range(5)]
+    on_it = {path: ("scan" if n < 2 else "born_digital") for n, path in enumerate(five)}
+    assert GATE.budget(dict.fromkeys(five, 10), five, None, on_it).findings == ()
+
+
+def test_a_document_under_fixtures_docs_must_declare_its_imaging() -> None:
+    """D1018: required there, because the floor is a claim about the correctness corpus."""
+    assert GATE.check_imaging(SEC, {}) == [
+        'no imaging; a fixture under fixtures/docs/ declares imaging = "scan" | "born_digital"'
+    ]
+    assert GATE.check_imaging(SEC, {"imaging": "scan"}) == []
+    assert GATE.check_imaging(SEC, {"imaging": "born_digital"}) == []
+
+
+def test_a_fixture_outside_fixtures_docs_need_not_declare_one_but_may_not_misspell_it() -> None:
+    """Optional elsewhere: a generated office fixture has no imaging to declare. But a value that
+    IS written is held to the two spellings wherever it sits, because a third value would be a
+    third regime nothing measures."""
+    assert GATE.check_imaging("packages/omniweave-pdf/fixtures/b.pdf", {}) == []
+    assert GATE.check_imaging("packages/omniweave-pdf/fixtures/b.pdf", {"imaging": "scan"}) == []
+    for where in (SEC, "packages/omniweave-pdf/fixtures/b.pdf"):
+        assert GATE.check_imaging(where, {"imaging": "scanned"}) == [
+            "imaging 'scanned' is not one of scan, born_digital"
+        ], where
+
+
+def _docs_tree(root: Path, imaging: str | None) -> list[str]:
+    """`_tree` plus one real document under `fixtures/docs/`, declaring `imaging` or not.
+
+    Written to disk, not just listed, because the point is to drive `main()` end to end: the
+    sidecar is parsed, `check_imaging` runs over it, the row reaches `budget()` and the floor is
+    computed from it. The pure-`budget()` tests above cannot see that wiring.
+    """
+    listed = _tree(root)
+    docs = root / "fixtures" / "docs"
+    docs.mkdir(parents=True)
+    (docs / "sec.pdf").write_bytes(DATA)
+    rows = [
+        "[fixture]",
+        f'sha256 = "{DIGEST}"',
+        f"bytes = {len(DATA)}",
+        'provenance = "public_domain"',
+        'spdx = "CC-PDDC"',
+        'source_url = "https://www.sec.gov/x.pdf"',
+        'retrieved_at = "2026-10-29"',
+        'statutory = "17 U.S.C. 105"',
+    ]
+    if imaging is not None:
+        rows.append(f'imaging = "{imaging}"')
+    (docs / "sec.pdf.meta.toml").write_bytes(("\n".join(rows) + "\n").encode())
+    return [*listed, "fixtures/docs/sec.pdf", "fixtures/docs/sec.pdf.meta.toml"]
+
+
+def test_main_fails_a_document_that_declares_no_imaging_and_names_the_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D1018 end to end, which is the test that matters: before this ruling a file landing under
+    `fixtures/docs/` made Q-G2 fail closed with no way to satisfy it. Now Q-G1 names the key, and
+    writing it is the fix."""
+    listed = _docs_tree(tmp_path, None)
+    _main(tmp_path, listed, capsys, "--write")
+    code, out = _main(tmp_path, listed, capsys, kib=200_000)
+    assert code == GATE.EXIT_FAIL
+    assert (
+        "  FAIL  fixtures/docs/sec.pdf.meta.toml: no imaging; a fixture under fixtures/docs/ "
+        'declares imaging = "scan" | "born_digital"' in out
+    ), out
+    assert "scan floor: not computed, 1 of 1" in out, out
+    #  One cause, one finding. Counting the WORD would count the fix text and the note too; what
+    #  the ruling promises is that Q-G2 adds no second finding, so count the FAIL lines and read
+    #  Q-G2's own verdict.
+    failed = [line for line in out.splitlines() if line.startswith("  FAIL")]
+    assert len(failed) == 1 and "imaging" in failed[0], failed
+    assert "Q-G2 ok  0 finding(s)" in out, out
+
+
+@pytest.mark.parametrize(
+    ("imaging", "says"),
+    [
+        ("scan", "the 40% scan floor: 1 of 1 fixture(s) are scans, 100%"),
+        ("born_digital", "0 of 1 fixture(s) are scans, 0%, under the 40% floor"),
+    ],
+)
+def test_main_measures_the_floor_from_the_declared_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], imaging: str, says: str
+) -> None:
+    """Both directions through the whole gate: a declared scan clears the floor and a declared
+    born-digital document fails it, which is section 4.1's point -- a wholly synthetic corpus
+    cannot show that the pipeline reads real pages."""
+    listed = _docs_tree(tmp_path, imaging)
+    _main(tmp_path, listed, capsys, "--write")
+    code, out = _main(tmp_path, listed, capsys, kib=200_000)
+    assert says in out, out
+    assert code == (GATE.EXIT_CLEAN if imaging == "scan" else GATE.EXIT_FAIL)
+    assert "no imaging" not in out
+
+
+def test_the_two_spellings_are_the_whole_vocabulary() -> None:
+    assert GATE.IMAGING == ("scan", "born_digital")
+    assert GATE.SCAN == "scan"
 
 
 def test_main_reports_q_g2_after_q_g1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
