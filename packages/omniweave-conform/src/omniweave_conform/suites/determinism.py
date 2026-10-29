@@ -51,7 +51,7 @@ from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator, Iterator
 
     from omniweave_conform.subject import Subject
 
@@ -86,7 +86,7 @@ def _digest(body: bytes) -> str:
 
 
 @contextmanager
-def _ambient(values: dict[str, str]) -> Iterator[None]:
+def _ambient(values: dict[str, str]) -> Generator[None]:
     """Set environment variables and restore exactly what was there, including absence."""
     previous = {key: os.environ.get(key) for key in values}
     os.environ.update(values)

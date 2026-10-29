@@ -205,7 +205,7 @@ import re
 import shlex
 import sqlite3
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from itertools import groupby
@@ -1285,7 +1285,7 @@ class SqliteReader:
         return self._snapshot()
 
     @contextmanager
-    def _snapshot(self) -> Iterator[Snapshot]:
+    def _snapshot(self) -> Generator[Snapshot]:
         with ow.snapshot(self._connection, snapshot_ms=self._snapshot_ms) as state:
             self._live.append(state)
             try:

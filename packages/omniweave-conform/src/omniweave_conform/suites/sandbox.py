@@ -56,7 +56,7 @@ from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator, Iterator
 
     from omniweave_conform.subject import Subject
 
@@ -111,7 +111,7 @@ class Watch:
 
 
 @contextmanager
-def _sandboxed(tmpdir: Path, *, block: bool) -> Iterator[Watch]:
+def _sandboxed(tmpdir: Path, *, block: bool) -> Generator[Watch]:
     """Record writes outside `tmpdir`; block (or record) every socket."""
     watch = Watch()
     real_open = builtins.open
@@ -242,7 +242,7 @@ def _compile(subject: Subject, elapsed: Callable[[], float], *, block: bool) -> 
     watches: list[Watch] = []
 
     @contextmanager
-    def guard(tmpdir: Path) -> Iterator[None]:
+    def guard(tmpdir: Path) -> Generator[None]:
         with _sandboxed(tmpdir, block=block) as watch:
             watches.append(watch)
             yield

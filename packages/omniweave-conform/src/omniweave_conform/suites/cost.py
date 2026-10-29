@@ -50,7 +50,7 @@ from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator, Iterator
     from pathlib import Path
 
     from omniweave_conform.subject import Subject
@@ -92,7 +92,7 @@ unmeasurable rather than as a suspiciously perfect R-squared of 1.0."""
 
 
 @contextmanager
-def _counting_sockets() -> Iterator[list[str]]:
+def _counting_sockets() -> Generator[list[str]]:
     seen: list[str] = []
     real_socket = socket.socket
     real_connection = socket.create_connection
