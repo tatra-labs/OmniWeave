@@ -25,7 +25,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-core/unit"
-tests = 10073
+tests = 10251
 properties = 18
 
 [[area]]

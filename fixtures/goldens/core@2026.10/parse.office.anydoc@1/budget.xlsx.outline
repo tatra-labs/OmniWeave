@@ -1,0 +1,27 @@
+owoutline/1  corpus=core@2026.10  doc=92f399d89c58ff3340b3257101b85cc6  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic b32eba30 -
+p0/0 table body extracted normalized 9dc45222 -
+p0/0/r0c0 table_cell body extracted normalized b4f3317f -
+p0/0/r0c0/0 paragraph body extracted normalized fb3589b0 - Line
+p0/0/r0c1/0 paragraph body extracted normalized 6825bc59 - Budgeted
+p0/0/r0c2/0 paragraph body extracted normalized 65a0d192 - Spent
+p0/0/r1c0/0 paragraph body extracted normalized 441a30bc - Binding
+p0/0/r1c1/0 paragraph body extracted normalized 997d35d5 - 1200
+p0/0/r1c2/0 paragraph body extracted normalized 93924092 - 1140
+p0/0/r2c0/0 paragraph body extracted normalized f3a7714f - Shelving
+p0/0/r2c1/0 paragraph body extracted normalized 1768b38c - 800
+p0/0/r2c2/0 paragraph body extracted normalized f1a12265 - 815
+p0/0/r3c0/0 paragraph body extracted normalized de019947 - Training
+p0/0/r3c1/0 paragraph body extracted normalized 77d2245e - 400
+p0/0/r3c2/0 paragraph body extracted normalized 41cf1c78 - 260
+p0/0/r0c1 table_cell body extracted normalized 11401f18 -
+p0/0/r0c2 table_cell body extracted normalized d446268f -
+p0/0/r1c0 table_cell body extracted normalized b6872ce4 -
+p0/0/r1c1 table_cell body extracted normalized 35c1aa83 -
+p0/0/r1c2 table_cell body extracted normalized 22183fd3 -
+p0/0/r2c0 table_cell body extracted normalized 2776d992 -
+p0/0/r2c1 table_cell body extracted normalized 85a2c602 -
+p0/0/r2c2 table_cell body extracted normalized 4fe87fee -
+p0/0/r3c0 table_cell body extracted normalized 8c33308d -
+p0/0/r3c1 table_cell body extracted normalized afe95344 -
+p0/0/r3c2 table_cell body extracted normalized a4d15982 -
