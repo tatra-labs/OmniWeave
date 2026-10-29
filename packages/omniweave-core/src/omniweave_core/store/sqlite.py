@@ -77,7 +77,7 @@ from omniweave_core.locks import (
 from omniweave_core.store.types import Snapshot
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Generator, Sequence
 
 __all__ = [
     "BATCH_WAIT_MS",
@@ -1186,7 +1186,7 @@ class _Transacting(Protocol):
 
 
 @contextmanager
-def immediate(connection: _Transacting) -> Iterator[None]:
+def immediate(connection: _Transacting) -> Generator[None]:
     """One `BEGIN IMMEDIATE` ... `COMMIT` for a caller holding no transaction; joins one it holds.
 
     **D886: the demarcation is the store's** (INV-17, ST1; G8's `no-sql-begin-outside-store`). A
@@ -1213,7 +1213,7 @@ def snapshot(
     *,
     snapshot_ms: int | None = None,
     monotonic_ns: Callable[[], int] = time.monotonic_ns,
-) -> Iterator[Snapshot]:
+) -> Generator[Snapshot]:
     """One `BEGIN DEFERRED` for the whole query, opened by its own first read. ST2, 07:2758-2799.
 
     **The two statements are one mechanism and their order is the mechanism** (07:2777-2782):

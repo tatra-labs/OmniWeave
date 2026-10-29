@@ -87,7 +87,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 from omniweave_core.errors import StoreBusy, StoreError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
 
 try:  # POSIX
     import fcntl as _fcntl
@@ -640,7 +640,7 @@ class Held:
 
 
 @contextmanager
-def hold(lock: FileScopedLock, *, wait_ms: int = INTERACTIVE_WAIT_MS) -> Iterator[Held]:
+def hold(lock: FileScopedLock, *, wait_ms: int = INTERACTIVE_WAIT_MS) -> Generator[Held]:
     """Take `lock`, yield the receipt, release on the way out -- including on a raise.
 
     **There is no lease and therefore nothing to extend.** 08:2543's third clause -- *"a live holder
