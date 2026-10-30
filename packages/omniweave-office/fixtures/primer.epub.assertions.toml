@@ -26,3 +26,4 @@ page = 1
 before = "A primer on indexes"
 after = "What an index is for"
 slices = ["office/labelled", "office/epub"]
+checked = "verified"

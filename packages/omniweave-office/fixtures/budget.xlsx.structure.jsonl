@@ -1,13 +1,13 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Line"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Budgeted"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Spent"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Binding"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1200"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1140"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Shelving"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "800"}
-{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "815"}
-{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Training"}
-{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "400"}
-{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "260"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Line", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Budgeted", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Spent", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Binding", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1200", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1140", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Shelving", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "800", "checked": "verified"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "815", "checked": "verified"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Training", "checked": "verified"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "400", "checked": "verified"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "260", "checked": "verified"}

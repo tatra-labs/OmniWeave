@@ -15,6 +15,7 @@ cell = "North"
 right = "17"
 up = "Region"
 slices = ["office/xlsx"]
+checked = "verified"
 
 [[assertion]]
 id = "units-column"
@@ -23,6 +24,7 @@ page = 1
 cell = "Units"
 down = "17"
 slices = ["office/xlsx"]
+checked = "verified"
 
 [[assertion]]
 id = "merged-total"
@@ -31,3 +33,4 @@ page = 1
 cell = "Total for all regions"
 up = "North"
 slices = ["office/has_merges=1"]
+checked = "verified"

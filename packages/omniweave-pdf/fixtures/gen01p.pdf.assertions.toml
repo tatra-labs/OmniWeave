@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Article 1. Schedule and severance"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-heading-first"
@@ -21,6 +22,7 @@ page = 1
 before = "Article 1. Schedule and severance"
 after = "schedule severance inspection counterpart custody effective"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-first-fifth"
@@ -29,6 +31,7 @@ page = 1
 before = "schedule severance inspection counterpart custody effective"
 after = "deliverable assignment resolution quarterly termination liability"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-fifth-last"
@@ -37,6 +40,7 @@ page = 1
 before = "deliverable assignment resolution quarterly termination liability"
 after = "effective escalation breach priority threshold condition warranty exhibit"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-last-cell"
@@ -45,9 +49,11 @@ page = 1
 before = "effective escalation breach priority threshold condition warranty exhibit"
 after = "R0C0-0031"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "no-further-article"
 type = "absent"
 text = "Article 2."
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"

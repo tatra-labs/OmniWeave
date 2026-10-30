@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Field notes"
 slices = ["office/odt"]
+checked = "verified"
 
 [[assertion]]
 id = "title-lead"
@@ -21,6 +22,7 @@ page = 1
 before = "Field notes"
 after = "Two observations, in order."
 slices = ["office/labelled", "office/odt"]
+checked = "verified"
 
 [[assertion]]
 id = "lead-list"
@@ -29,6 +31,7 @@ page = 1
 before = "Two observations, in order."
 after = "the first"
 slices = ["office/labelled", "office/odt"]
+checked = "verified"
 
 [[assertion]]
 id = "list-order"
@@ -37,3 +40,4 @@ page = 1
 before = "the first"
 after = "the second"
 slices = ["office/labelled", "office/odt"]
+checked = "verified"

@@ -26,3 +26,4 @@ page = 1
 before = "Shelf"
 after = "Items"
 slices = ["office/labelled", "office/xlsx"]
+checked = "verified"

@@ -1,6 +1,6 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Site"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Uptime"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "eu-west"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "99.9"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Across every site"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Site", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Uptime", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "eu-west", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "99.9", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Across every site", "checked": "verified"}

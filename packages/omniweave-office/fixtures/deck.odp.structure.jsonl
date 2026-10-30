@@ -1,3 +1,3 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Release plan"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "one slide is enough"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Release plan", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "one slide is enough", "checked": "verified"}

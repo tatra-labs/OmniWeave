@@ -1,11 +1,11 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Flatbread, four pieces"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Ingredient"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Amount"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Flour"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "300 g"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Water"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "180 ml"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Mix until no dry flour remains."}
-{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Rest the dough for twenty minutes."}
-{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Cook each piece for two minutes a side."}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Flatbread, four pieces", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Ingredient", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Amount", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Flour", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "300 g", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Water", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "180 ml", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Mix until no dry flour remains.", "checked": "verified"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Rest the dough for twenty minutes.", "checked": "verified"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "Cook each piece for two minutes a side.", "checked": "verified"}

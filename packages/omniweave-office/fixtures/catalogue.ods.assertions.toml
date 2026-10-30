@@ -26,3 +26,4 @@ page = 1
 before = "Reference"
 after = "Title"
 slices = ["office/labelled", "office/ods"]
+checked = "verified"

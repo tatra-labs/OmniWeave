@@ -26,3 +26,4 @@ page = 1
 before = "Invoice 2026-114"
 after = "Issued to the Northern Archive on 14 October 2026."
 slices = ["office/labelled", "office/docx"]
+checked = "verified"

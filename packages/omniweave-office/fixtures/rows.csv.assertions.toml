@@ -15,6 +15,7 @@ cell = "north"
 right = "17"
 up = "region"
 slices = ["office/csv"]
+checked = "verified"
 
 [[assertion]]
 id = "south-units"
@@ -24,6 +25,7 @@ cell = "4"
 left = "south"
 up = "17"
 slices = ["office/csv"]
+checked = "verified"
 
 [[assertion]]
 id = "quoted-comma"
@@ -31,3 +33,4 @@ type = "present"
 page = 1
 text = "a note, with a comma"
 slices = ["office/csv"]
+checked = "verified"

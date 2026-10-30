@@ -64,9 +64,9 @@ def test_each_sidecar_is_the_generators_output(name: str) -> None:
 
 @pytest.mark.parametrize("name", _names())
 def test_each_reference_is_the_outline_it_was_written_from(name: str) -> None:
-    assert (FIXTURES / f"{name}.structure.jsonl").read_bytes() == GEN.reference(
-        GEN.OUTLINES[name]
-    ).encode("utf-8")
+    """Modulo the reviewer's signature, which this script never writes (D1025)."""
+    held = (FIXTURES / f"{name}.structure.jsonl").read_bytes()
+    assert GEN.unsigned(held) == GEN.reference(GEN.OUTLINES[name]).encode("utf-8")
 
 
 def test_a_build_is_a_function_of_the_outline_alone() -> None:
@@ -237,9 +237,11 @@ def _labelled() -> list[str]:
 
 @pytest.mark.parametrize("name", _labelled())
 def test_each_labels_file_is_the_generators_output(name: str) -> None:
+    """Modulo the reviewer's signature, as above (D1025)."""
     wanted = GEN.labels(name, GEN.OUTLINES[name])
     assert wanted is not None
-    assert (FIXTURES / f"{name}.assertions.toml").read_bytes() == wanted.encode("utf-8")
+    held = (FIXTURES / f"{name}.assertions.toml").read_bytes()
+    assert GEN.unsigned(held) == wanted.encode("utf-8")
 
 
 @pytest.mark.parametrize("name", sorted(GEN.DRAFTED))
@@ -310,10 +312,52 @@ def test_the_gated_merge_slice_still_leads_its_own_assertions() -> None:
 
 
 @pytest.mark.parametrize("name", _labelled())
-def test_no_generated_assertion_carries_a_signature(name: str) -> None:
-    """D913 again, on the other label kind: Claude drafts, the user verifies."""
+def test_every_generated_assertion_carries_the_reviewers_signature(name: str) -> None:
+    """D913's other half, now done: Claude drafted, and on 2026-10-30 the user verified.
+
+    This read `"checked" not in one` until then. That was the state and not the rule, and keeping
+    it would have made a signed corpus fail its own generator's tests. What the rule actually says
+    is that the only value here is the reviewer's, and that `labels()` never writes one -- both
+    asserted, the second by `test_the_generator_itself_signs_nothing` below.
+    """
     data = tomllib.loads((FIXTURES / f"{name}.assertions.toml").read_text(encoding="utf-8"))
-    assert all("checked" not in one for one in data["assertion"])
+    assert {one.get("checked") for one in data["assertion"]} == {"verified"}
+
+
+@pytest.mark.parametrize("name", _labelled())
+def test_the_generator_itself_signs_nothing(name: str) -> None:
+    """D913, held where it belongs: on this script's OUTPUT, not on the committed tree."""
+    body = GEN.labels(name, GEN.OUTLINES[name])
+    assert body is not None
+    #  Asserted on the PARSED rows, not the text: the generated header explains that `checked` is
+    #  absent and why, so the word is there on purpose and a substring test reads it as a value.
+    assert all("checked" not in one for one in tomllib.loads(body)["assertion"])
+    assert GEN.unsigned(body.encode("utf-8")) == body.encode("utf-8"), "nothing to strip"
+
+
+def test_the_signature_is_the_only_difference_and_stripping_it_is_exact() -> None:
+    """D1025, both directions.
+
+    Forwards: every committed label file differs from this script's output by signatures ALONE, so
+    `label_review --apply` reformatted nothing when it signed (`label_review` ruling 3).
+    Backwards: the committed files really do carry signatures, so `unsigned()` is doing work
+    rather than passing bytes through -- an exemption that strips nothing would make every test
+    above vacuous.
+    """
+    stripped = 0
+    for name in _names():
+        for suffix, generated in (
+            (".structure.jsonl", GEN.reference(GEN.OUTLINES[name])),
+            (".assertions.toml", GEN.labels(name, GEN.OUTLINES[name])),
+        ):
+            if generated is None:
+                continue
+            held = (FIXTURES / f"{name}{suffix}").read_bytes()
+            assert GEN.unsigned(held) == generated.encode("utf-8"), name + suffix
+            stripped += held != GEN.unsigned(held)
+    assert stripped == 2 * len(_names()) - len(GEN.DRAFTED), (
+        "every file this script owns is signed; if one is not, unsigned() is hiding a real diff"
+    )
 
 
 def test_order_pair_takes_the_first_structural_transition() -> None:

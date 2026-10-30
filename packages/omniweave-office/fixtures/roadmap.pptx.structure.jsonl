@@ -1,6 +1,6 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Roadmap to the spring release"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the reader index ships first"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the catalogue migration follows it"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the public search page is last"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "speaker_note", "text": "Do not promise a date for the search page."}
+{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Roadmap to the spring release", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the reader index ships first", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the catalogue migration follows it", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "the public search page is last", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "speaker_note", "text": "Do not promise a date for the search page.", "checked": "verified"}

@@ -398,7 +398,7 @@ def test_the_pdf_card_declares_no_structure_and_the_office_card_does() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_committed_reference_loads_and_is_unsigned() -> None:
+def test_every_committed_reference_loads_and_is_signed_by_the_reviewer() -> None:
     files = sorted(OFFICE_FIXTURES.glob(f"*{structure.SUFFIX}"))
     assert len(files) == 33, (
         "D982 drafted a reference for each of the ten labelled office fixtures and D1004 added"
@@ -410,9 +410,15 @@ def test_every_committed_reference_loads_and_is_unsigned() -> None:
         for row in structure.load(path.with_name(path.name.removesuffix(structure.SUFFIX)))
     ]
     assert len(rows) == 277
-    assert [row for row in rows if row.checked is not None] == [], (
-        "ruling 3: only the reviewer writes checked"
-    )
+    #  Until 2026-10-30 this read `checked is not None` == [] -- "ruling 3: only the reviewer
+    #  writes checked" -- which was the state, not the rule. The reviewer has now signed all 33
+    #  documents, so what ruling 3 actually requires is asserted instead: a reference signs WHOLE,
+    #  so no document may be part-signed, and the only value a row may carry is `verified`.
+    assert {row.checked for row in rows} == {"verified"}, "ruling 3: and only the reviewer's value"
+    for path in files:
+        document = path.with_name(path.name.removesuffix(structure.SUFFIX))
+        signed = {row.checked for row in structure.load(document)}
+        assert len(signed) == 1, f"{document.name} is part-signed, which has no precision"
 
 
 def test_every_labelled_office_fixture_carries_a_reference() -> None:
