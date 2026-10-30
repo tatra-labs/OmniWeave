@@ -1,7 +1,7 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Minutes of the weekly review"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Present: three of four members."}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The previous minutes were accepted without change."}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the index rebuild finished on Tuesday"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the backlog is down to eleven items"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the next review is in a fortnight"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Minutes of the weekly review", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Present: three of four members.", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The previous minutes were accepted without change.", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the index rebuild finished on Tuesday", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the backlog is down to eleven items", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the next review is in a fortnight", "checked": "verified"}

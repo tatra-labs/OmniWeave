@@ -26,3 +26,4 @@ page = 1
 before = "Reading room handbook"
 after = "The reading room is open on weekday afternoons."
 slices = ["office/labelled", "office/docx"]
+checked = "verified"

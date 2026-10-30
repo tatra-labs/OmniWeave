@@ -317,3 +317,53 @@ def test_the_rows_satisfy_eval_metric(tmp_path: Path) -> None:
         ("pdf/born_digital/b", "ok"),
         ("tiny", "unknown"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# D1024: the evaluator is the TYPE's, not the metric's
+# ---------------------------------------------------------------------------
+
+
+def test_the_shipped_table_rate_sends_cell_rel_to_owdoc() -> None:
+    """D1024, a user ruling of 2026-10-30. 13:1100 counts `table` AND `cell_rel`, and a `cell_rel`
+    is a claim about the parsed `Grid` that the text evaluator cannot see."""
+    spec = RATES["table_rel_acc"]
+    assert spec.judge_of("cell_rel", "text") == "owdoc"
+    assert spec.judge_of("table", "text") == "text", "the default still rules the rest"
+    assert RATES["order_acc"].judge_of("order", "text") == "text", "two rates have one evaluator"
+
+
+def test_an_override_naming_a_type_the_rate_does_not_count_is_refused() -> None:
+    """The exception, checked the other way: an evaluator for a type nothing counts is a claim
+    about a population that does not exist."""
+    with pytest.raises(ValueError, match="which it does not count"):
+        Rate("table_rel_acc", frozenset({"table"}), "human", {"cell_rel": "owdoc"})
+
+
+def test_two_evaluators_make_one_population_rather_than_a_partial_one() -> None:
+    """The defect D1024 fixed, as arithmetic.
+
+    `table_rel_acc`'s population is both types. With ONE evaluator for the metric, every
+    `cell_rel` counted as expected and arrived missing -- on the shipped corpus 18 of 58, 31%
+    against `MAX_PARTIAL_FRAC = 0.02` -- so ruling 4 turned every row `unknown` the moment a
+    reviewer verified one, and the metric could never compute. Here: 20 `table` judged by text and
+    12 `cell_rel` judged by owdoc, one slice of 32.
+    """
+    key = "office/has_merges=1"
+    tables = [_assertion(f"t{i}", (key,), kind="table") for i in range(20)]
+    cells = [_assertion(f"c{i}", (key,), kind="cell_rel") for i in range(12)]
+    verdicts = [_verdict(a.assertion_id, key, True, evaluator="text") for a in tables]
+    verdicts += [_verdict(a.assertion_id, key, True, evaluator="owdoc") for a in cells]
+
+    got = rollup(_RUN, RATES["table_rel_acc"], verdicts, tables + cells, evaluator="text")
+    assert (got.expected, got.missing) == (32, 0), "no row is missing, so ruling 4 does not fire"
+    rows = _rows(got)
+    assert rows[key].state == "ok"
+    assert (rows[key].n, rows[key].value) == (32, 1.0)
+    assert rows[MACRO].state == "ok"
+
+    #  And without the override it is exactly the defect: 12 of 32 missing, every row unknown.
+    plain = Rate("table_rel_acc", frozenset({"table", "cell_rel"}), "human")
+    broke = rollup(_RUN, plain, verdicts, tables + cells, evaluator="text")
+    assert (broke.expected, broke.missing) == (32, 12)
+    assert {row.state for row in broke.metrics} == {"unknown"}

@@ -14,3 +14,4 @@ page = 1
 cell = "north"
 up = "Region"
 slices = ["office/xls"]
+checked = "verified"

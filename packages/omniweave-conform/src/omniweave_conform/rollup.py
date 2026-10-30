@@ -11,7 +11,10 @@ rollup"*), `order_acc` (*"the fraction of `order` assertions that pass"*) and th
 
 ## Rulings
 
-1. **A rate's population is one evaluator's verdicts on assertions that score.** An assertion
+1. **A rate's population is its types' verdicts on assertions that score**, each type judged by
+   ITS evaluator -- the caller's by default, and `Rate.evaluators`' where a type names one
+   (D1024, a user ruling of 2026-10-30). It read *"one evaluator's verdicts"* until then, which
+   `table_rel_acc` could not satisfy: see `Rate.evaluators`. An assertion
    scores when `checked = 'verified'`. `checked IS NULL` *"runs and never scores"* (13:1022), and
    its verdicts are counted in `Rollup.unscored`, because *"the excluded count is printed on every
    report"*. A `rejected` assertion does not run (D815). `eval_metric` has no evaluator column, so
@@ -40,6 +43,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.drivers.card import MIN_SLICE_N
@@ -52,13 +56,17 @@ from omniweave_conform.stats import Slice, macro, rate
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-__all__ = ["MACRO", "RATES", "VERIFIED", "Rate", "Rollup", "rollup"]
+__all__ = ["MACRO", "NO_OVERRIDE", "RATES", "VERIFIED", "Rate", "Rollup", "rollup"]
 
 MACRO: Final = "__macro__"
 """`eval_metric.slice_key`'s default: the headline row."""
 
 VERIFIED: Final = "verified"
 UNSLICED: Final = "*"
+
+
+NO_OVERRIDE: Final[Mapping[str, str]] = MappingProxyType({})
+"""A rate whose every type is judged by the caller's evaluator."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,16 +76,41 @@ class Rate:
     metric: str
     types: frozenset[str]
     truth_kind: str
+    evaluators: Mapping[str, str] = NO_OVERRIDE
+    """D1024: the evaluator that judges a TYPE, where it is not the caller's default.
+
+    Ruling 1 says a rate's population is "one evaluator's verdicts", and for two of the three
+    rates it still is. `table_rel_acc` cannot be: 13:1100 defines it over `table` AND `cell_rel`
+    assertions, and a `cell_rel` is a claim about the parsed `Grid`'s spans and header chains,
+    which the text evaluator structurally cannot see -- `judge()` sends it to `owdoc`. With one
+    evaluator for the metric, every `cell_rel` counted as EXPECTED and arrived MISSING, and 18 of
+    58 is 31% against `MAX_PARTIAL_FRAC = 0.02`, so ruling 4 turned every row of the metric
+    `unknown` the moment a reviewer verified one. The metric could never compute, which is not
+    what either clause intended.
+    """
 
     def __post_init__(self) -> None:
-        """Ruling 6."""
+        """Ruling 6, and ruling 1's amendment: an override names a type this rate counts."""
         check_accuracy_column(self.metric, self.truth_kind)
+        stray = sorted(set(self.evaluators) - self.types)
+        if stray:
+            message = f"{self.metric}: evaluators names {stray}, which it does not count"
+            raise ValueError(message)
+
+    def judge_of(self, assertion_type: str, default: str) -> str:
+        """Which evaluator's verdict scores this type (D1024)."""
+        return self.evaluators.get(assertion_type, default)
 
 
 RATES: Final[Mapping[str, Rate]] = {
     one.metric: one
     for one in (
-        Rate("table_rel_acc", frozenset({"table", "cell_rel"}), "human"),
+        Rate(
+            "table_rel_acc",
+            frozenset({"table", "cell_rel"}),
+            "human",
+            MappingProxyType({"cell_rel": "owdoc"}),
+        ),
         Rate("order_acc", frozenset({"order"}), "rendered"),
         Rate("field_acc", frozenset({"field", "absent_field", "null_kept"}), "human"),
     )
@@ -114,7 +147,10 @@ def rollup(
     unscored = 0
     for verdict in verdicts:
         assertion = by_id.get(verdict.assertion_id)
-        if verdict.run_id != run.run_id or verdict.evaluator != evaluator or assertion is None:
+        if assertion is None or verdict.run_id != run.run_id:
+            continue
+        #  D1024: the evaluator is the TYPE's, falling back to the caller's.
+        if verdict.evaluator != spec.judge_of(assertion.type, evaluator):
             continue
         answered.add(assertion.assertion_id)
         if assertion.checked == VERIFIED:

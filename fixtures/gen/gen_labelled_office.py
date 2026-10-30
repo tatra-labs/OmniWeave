@@ -1215,6 +1215,30 @@ def esc_toml(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
+SIGNATURE_TOML: Final = b'checked = "verified"' + b"\n"
+SIGNATURE_JSONL: Final = b', "checked": "verified"'
+"""How `tools/label_review.py --apply` appends a reviewer's signature to each label kind.
+
+It appends and reformats nothing else, which is `label_review` ruling 3, and that is what lets
+`unsigned()` below recover this script's own output from a signed file byte for byte.
+"""
+
+
+def unsigned(body: bytes) -> bytes:
+    """`body` with the reviewer's signatures removed. **D1025.**
+
+    This script writes UNSIGNED labels -- D913: Claude drafts, the user verifies -- so once a
+    reviewer signs, the committed file is this script's output PLUS their signature and the two
+    are no longer equal. Comparing the bytes directly made `--check` report every signed file
+    stale and would have made `--write` CLOBBER 211 verdicts, which is the real hazard here.
+
+    So the comparison is modulo the signature, and the claim it supports is stronger than the one
+    it replaced: this script owns every byte of these files EXCEPT the signature, and
+    `label_review` touched nothing else when it signed.
+    """
+    return body.replace(SIGNATURE_JSONL, b"").replace(SIGNATURE_TOML, b"")
+
+
 def build(name: str) -> bytes:
     """One document's bytes, from its outline alone."""
     outline = OUTLINES[name]
@@ -1247,11 +1271,16 @@ def main(argv: list[str] | None = None) -> int:
             wanted[f"{name}.assertions.toml"] = drafted.encode("utf-8")
         for relative, body in wanted.items():
             target = args.out / relative
+            #  D1025: modulo the reviewer's signature, which this script never writes and must
+            #  never destroy. A file whose UNSIGNED form already matches is left exactly as it is,
+            #  signature included; one that differs is rewritten, and losing the signature is then
+            #  correct, because it attested to content this outline no longer produces.
+            held = target.read_bytes() if target.is_file() else b""
+            same = bool(held) and unsigned(held) == unsigned(body)
             if args.check:
-                same = target.is_file() and target.read_bytes() == body
                 stale += not same
                 report(f"{'ok  ' if same else 'STALE'}  {relative}")
-            else:
+            elif not same:
                 target.write_bytes(body)
         if not args.check:
             report(f"{name:22s} {len(data):7d} bytes, {len(outline.rows)} reference row(s)")

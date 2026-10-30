@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Article 1. Schedule and severance"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-heading-first"
@@ -21,6 +22,7 @@ page = 1
 before = "Article 1. Schedule and severance"
 after = "schedule severance inspection counterpart custody effective"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-first-fifth"
@@ -29,6 +31,7 @@ page = 1
 before = "schedule severance inspection counterpart custody effective"
 after = "deliverable assignment resolution quarterly termination liability"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-fifth-last"
@@ -37,6 +40,7 @@ page = 1
 before = "deliverable assignment resolution quarterly termination liability"
 after = "effective escalation breach priority threshold condition warranty exhibit"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-last-cell"
@@ -45,6 +49,7 @@ page = 1
 before = "effective escalation breach priority threshold condition warranty exhibit"
 after = "R0C0-0031"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-heading"
@@ -52,6 +57,7 @@ type = "present"
 page = 2
 text = "Article 2. Notice and supplement"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-heading-first"
@@ -60,6 +66,7 @@ page = 2
 before = "Article 2. Notice and supplement"
 after = "notice supplement retention arbitration clause survival acceptance"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-first-fifth"
@@ -68,6 +75,7 @@ page = 2
 before = "notice supplement retention arbitration clause survival acceptance"
 after = "audit governing agreement commencement milestone waiver"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-fifth-last"
@@ -76,6 +84,7 @@ page = 2
 before = "audit governing agreement commencement milestone waiver"
 after = "survival acceptance novation escrow annual renewal remedy"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-last-cell"
@@ -84,9 +93,11 @@ page = 2
 before = "survival acceptance novation escrow annual renewal remedy"
 after = "R0C0-0062"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "no-further-article"
 type = "absent"
 text = "Article 3."
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"

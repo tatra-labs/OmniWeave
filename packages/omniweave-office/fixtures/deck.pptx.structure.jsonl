@@ -1,5 +1,5 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Pipeline status"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "ingest is green"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "compile is amber"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "speaker_note", "text": "Mention the backlog only if asked."}
+{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Pipeline status", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "ingest is green", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "compile is amber", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "speaker_note", "text": "Mention the backlog only if asked.", "checked": "verified"}

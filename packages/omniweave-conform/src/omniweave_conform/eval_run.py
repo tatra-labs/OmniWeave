@@ -586,9 +586,7 @@ def _labelled(
     #  0.90 floor matches no row at all. That is the "law over an empty set" eval/gates.toml's own
     #  header describes, and it was live until this line was fixed.
     refs = {
-        path.relative_to(base).as_posix(): structure.load(
-            path, slices=labels.sidecar_slices(path)
-        )
+        path.relative_to(base).as_posix(): structure.load(path, slices=labels.sidecar_slices(path))
         for path in files
         if structure.reference_of(path).is_file()
     }

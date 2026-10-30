@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Pipeline status"
 slices = ["office/pptx"]
+checked = "verified"
 
 [[assertion]]
 id = "title-bullets"
@@ -21,6 +22,7 @@ page = 1
 before = "Pipeline status"
 after = "ingest is green"
 slices = ["office/labelled", "office/pptx"]
+checked = "verified"
 
 [[assertion]]
 id = "bullet-order"
@@ -29,3 +31,4 @@ page = 1
 before = "ingest is green"
 after = "compile is amber"
 slices = ["office/labelled", "office/pptx"]
+checked = "verified"

@@ -26,3 +26,4 @@ page = 1
 before = "Catalogue migration, kickoff"
 after = "who is on the team"
 slices = ["office/labelled", "office/odp"]
+checked = "verified"
