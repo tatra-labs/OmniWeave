@@ -10,15 +10,22 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
 from omniweave_core.drivers.catalog import read_first_party
 from omniweave_core.drivers.digest import wheel_digest
 
 REPO = Path(__file__).resolve().parents[4]
+
+CORE_VERSION: Final[str] = tomllib.loads(
+    (REPO / "packages" / "omniweave-core" / "pyproject.toml").read_text(encoding="utf-8")
+)["project"]["version"]
+"""`RELEASE`, read from the one site that defines it (D1022)."""
 
 
 def _load() -> ModuleType:
@@ -72,7 +79,11 @@ def test_thirteen_rows_core_absent_every_digest_the_wheels(dist: Path, tmp_path:
         if name != GEN.CORE:
             row = manifest.dists[name]
             assert (row.version, row.dist_sha256) == (version, wheel_digest(wheel)), name
-    assert manifest.release == "0.1.0", "core's version is RELEASE"
+    assert manifest.release == CORE_VERSION, (
+        "core's version is RELEASE, and it is READ from the tree rather than from the"
+        " synthetic wheels: this fixture builds them at 0.1.0 while the tree is at"
+        f" {CORE_VERSION}, so this also says where gen_first_party takes `release` from"
+    )
 
 
 def test_vendored_follows_g12s_register(dist: Path, tmp_path: Path) -> None:
