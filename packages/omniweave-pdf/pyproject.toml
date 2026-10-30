@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omniweave-pdf"
-version = "0.1.0"                     # == RELEASE. G5.
+version = "1.0.0"                     # == RELEASE. G5.
 description = "parse.pdf.pdfium — text layer, glyph runs, page geometry, rasters."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]

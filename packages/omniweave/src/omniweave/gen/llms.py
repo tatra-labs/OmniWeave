@@ -113,7 +113,7 @@ column one and appends every line that does not.
 """
 
 PRODUCT: Final[str] = "omniweave"
-RELEASE: Final[str] = "0.1.0"
+RELEASE: Final[str] = "1.0.0"
 """The release, 10:2440 and 10:2443. `packages/omniweave/pyproject.toml` carries it as `version`
 with the comment *"== RELEASE. G5."*, and a test binds the two -- a generator may not read a file
 (10:229), so the number is spelled here and the binding is a test's, exactly as

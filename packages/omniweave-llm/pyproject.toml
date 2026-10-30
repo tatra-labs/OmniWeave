@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omniweave-llm"
-version = "0.1.0"                     # == RELEASE. G5.
+version = "1.0.0"                     # == RELEASE. G5.
 description = "The four billed_api derive/1 passes, reaching a model through io.service()."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]

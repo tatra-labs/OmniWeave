@@ -30,10 +30,22 @@ import sys
 import tomllib
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[4]
+
+RELEASE: Final[str] = tomllib.loads(
+    (REPO / "packages" / "omniweave-core" / "pyproject.toml").read_text(encoding="utf-8")
+)["project"]["version"]
+"""`RELEASE`, READ from the one site that defines it rather than retyped here.
+
+Sixteen tests in this file pinned `0.1.0`, and D1022's bump to `1.0.0` broke every one of them --
+sixteen edits to express one change. A number that is deliberately WRONG stays a literal below,
+because it is the mutation and not the release: `0.1.1` and `0.2.0` have to differ from `RELEASE`
+whatever `RELEASE` is, and they do.
+"""
 
 
 def _load(name: str) -> ModuleType:
@@ -167,7 +179,7 @@ def complete(workspace: Path) -> Path:
         path = workspace / "toolchains" / name / "package.json"
         path.parent.mkdir(parents=True)
         path.write_text(
-            json.dumps({"name": f"@omniweave/{name}", "version": "0.1.0"}), encoding="utf-8"
+            json.dumps({"name": f"@omniweave/{name}", "version": RELEASE}), encoding="utf-8"
         )
     # Six-key rows and a `schema` line, transcribed from 11-repo-layout.md section 3.2's printed
     # manifest -- NOT the two keys `check_versions.py` happens to read.
@@ -182,19 +194,19 @@ def complete(workspace: Path) -> Path:
     # below is what keeps the two in step.
     (workspace / "tools" / "toolchains.toml").write_text(
         "schema = 1\n\n"
-        '[[toolchain]]\nname = "deck"\nversion = "0.1.0"\nentry = "dist/render.mjs"\n'
+        f'[[toolchain]]\nname = "deck"\nversion = "{RELEASE}"\nentry = "dist/render.mjs"\n'
         'node_range = ">=20.11,<23"\n'
         f'bundle_sha256 = "sha256:{"1f0c9a" + "0" * 58}"\n'
-        'bundle_url = "https://example.invalid/omniweave-toolchain-deck-0.1.0.tar.gz"\n\n'
-        '[[toolchain]]\nname = "video"\nversion = "0.1.0"\nentry = "dist/render.mjs"\n'
+        f'bundle_url = "https://example.invalid/omniweave-toolchain-deck-{RELEASE}.tar.gz"\n\n'
+        f'[[toolchain]]\nname = "video"\nversion = "{RELEASE}"\nentry = "dist/render.mjs"\n'
         'node_range = ">=20.11,<23"\n'
         f'bundle_sha256 = "sha256:{"2e1d8b" + "0" * 58}"\n'
-        'bundle_url = "https://example.invalid/omniweave-toolchain-video-0.1.0.tar.gz"\n',
+        f'bundle_url = "https://example.invalid/omniweave-toolchain-video-{RELEASE}.tar.gz"\n',
         encoding="utf-8",
     )
     manifest = workspace / "packages/omniweave-core/src/omniweave_core/drivers/first_party.toml"
     manifest.parent.mkdir(parents=True)
-    manifest.write_text('release = "0.1.0"\n', encoding="utf-8")
+    manifest.write_text(f'release = "{RELEASE}"\n', encoding="utf-8")
     return workspace
 
 
@@ -293,9 +305,9 @@ def test_the_real_workspace_passes_and_accounts_for_all_forty_sites() -> None:
     report = cv.check(REPO)
     assert not report.findings, _where(report)
     assert len(report.checked) + report.pending_sites == cv.TOTAL_SITES
-    assert report.release == "0.1.0"
+    assert report.release == RELEASE
     assert report.port_major == 1
-    assert report.asserted == ["CHANGELOG.md: topmost heading names 0.1.0"]
+    assert report.asserted == [f"CHANGELOG.md: topmost heading names {RELEASE}"]
 
 
 def test_the_five_absent_sites_are_reported_as_pending_and_never_skipped() -> None:
@@ -335,7 +347,7 @@ def test_a_complete_tree_reaches_forty_of_forty(complete: Path) -> None:
 
 
 def test_the_git_tag_is_asserted_and_never_written(complete: Path) -> None:
-    assert cv.check(complete, tag="v0.1.0").ok()
+    assert cv.check(complete, tag=f"v{RELEASE}").ok()
     bad = cv.check(complete, tag="v0.1.1")
     assert "git tag" in _where(bad)
 
@@ -348,10 +360,15 @@ def test_the_git_tag_is_asserted_and_never_written(complete: Path) -> None:
 @pytest.mark.parametrize(
     ("dist", "old", "new", "expect"),
     [
-        ("omniweave-pdf", 'version = "0.1.0"', 'version = "0.1.1"', "omniweave-pdf/pyproject.toml"),
+        (
+            "omniweave-pdf",
+            f'version = "{RELEASE}"',
+            'version = "0.1.1"',
+            "omniweave-pdf/pyproject.toml",
+        ),
         (
             "omniweave-serve",
-            '"omniweave-core ~= 0.1.0"',
+            f'"omniweave-core ~= {RELEASE}"',
             '"omniweave-core ~= 0.2.0"',
             "omniweave-core ~=",
         ),
@@ -361,7 +378,7 @@ def test_the_git_tag_is_asserted_and_never_written(complete: Path) -> None:
             '"omniweave-ports >=2,<3"',
             "the omniweave-ports floor",
         ),
-        ("omniweave", '"omniweave-office ~= 0.1.0",', "", "omniweave-office ~="),
+        ("omniweave", f'"omniweave-office ~= {RELEASE}",', "", "omniweave-office ~="),
         ("omniweave-ports", 'version = "1.0.0"', 'version = "0.1.0"', "[project] version"),
     ],
 )
@@ -377,17 +394,25 @@ def test_one_wrong_site_is_one_named_finding(
 @pytest.mark.parametrize(
     ("old", "new", "expect"),
     [
-        ('vision = ["omniweave-vision ~= 0.1.0"]', 'all = ["omniweave-vision ~= 0.1.0"]', "[all]"),
-        ('vision = ["omniweave-vision ~= 0.1.0"]', 'vision = ["torch>=2"]', "[vision]"),
-        ('vision = ["omniweave-vision ~= 0.1.0"]', "", "[vision]"),
-        ('llm = ["omniweave-llm ~= 0.1.0"]', 'llm = ["omniweave-graph ~= 0.1.0"]', "injectivity"),
         (
-            'pdf = ["omniweave-pdf ~= 0.1.0"]',
-            'pdf = ["omniweave-pdf ~= 0.1.0", "pypdfium2"]',
+            f'vision = ["omniweave-vision ~= {RELEASE}"]',
+            f'all = ["omniweave-vision ~= {RELEASE}"]',
+            "[all]",
+        ),
+        (f'vision = ["omniweave-vision ~= {RELEASE}"]', 'vision = ["torch>=2"]', "[vision]"),
+        (f'vision = ["omniweave-vision ~= {RELEASE}"]', "", "[vision]"),
+        (
+            f'llm = ["omniweave-llm ~= {RELEASE}"]',
+            f'llm = ["omniweave-graph ~= {RELEASE}"]',
+            "injectivity",
+        ),
+        (
+            f'pdf = ["omniweave-pdf ~= {RELEASE}"]',
+            f'pdf = ["omniweave-pdf ~= {RELEASE}", "pypdfium2"]',
             "[pdf]",
         ),
         (
-            'deck = ["omniweave-target-deck ~= 0.1.0"]',
+            f'deck = ["omniweave-target-deck ~= {RELEASE}"]',
             'deck = ["omniweave-target-deck ~= 0.9.0"]',
             "[deck] ~=",
         ),
@@ -405,7 +430,7 @@ def test_the_extras_block_refuses_every_g14_violation(
 
 def test_recommended_losing_a_member_is_a_finding(workspace: Path) -> None:
     path = workspace / "packages" / "omniweave" / "pyproject.toml"
-    _edit(path, ', "omniweave-target-pptx ~= 0.1.0"]', "]")
+    _edit(path, f', "omniweave-target-pptx ~= {RELEASE}"]', "]")
     assert "recommended" in _where(cv.check(workspace))
 
 
@@ -423,37 +448,37 @@ def test_a_deleted_distribution_is_a_finding(workspace: Path) -> None:
 
 
 def test_a_toolchain_row_that_exists_and_disagrees_fails(complete: Path) -> None:
-    _edit(complete / "tools" / "toolchains.toml", 'version = "0.1.0"', 'version = "0.1.9"')
+    _edit(complete / "tools" / "toolchains.toml", f'version = "{RELEASE}"', 'version = "0.1.9"')
     assert "toolchains.toml: [[toolchain]][0] version" in _where(cv.check(complete))
 
 
 def test_a_package_json_that_exists_and_disagrees_fails(complete: Path) -> None:
-    _edit(complete / "toolchains" / "deck" / "package.json", '"0.1.0"', '"0.9.9"')
+    _edit(complete / "toolchains" / "deck" / "package.json", f'"{RELEASE}"', '"0.9.9"')
     assert "toolchains/deck/package.json: version" in _where(cv.check(complete))
 
 
 def test_a_first_party_manifest_that_exists_and_disagrees_fails(complete: Path) -> None:
     manifest = complete / "packages/omniweave-core/src/omniweave_core/drivers/first_party.toml"
-    _edit(manifest, '"0.1.0"', '"0.0.9"')
+    _edit(manifest, f'"{RELEASE}"', '"0.0.9"')
     assert "first_party.toml: release" in _where(cv.check(complete))
 
 
 def test_a_changelog_whose_heading_names_another_release_fails(complete: Path) -> None:
     (complete / "CHANGELOG.md").write_text("# 0.9.9 - unreleased\n", encoding="utf-8")
     assert "CHANGELOG.md: topmost heading" in _where(cv.check(complete))
-    (complete / "CHANGELOG.md").write_text("# 0.1.0 - first\n", encoding="utf-8")
+    (complete / "CHANGELOG.md").write_text(f"# {RELEASE} - first\n", encoding="utf-8")
     assert cv.check(complete).ok()
 
 
 def test_the_tag_and_the_changelog_count_toward_no_total(complete: Path) -> None:
     """Section 4.2: both are "asserted and never written, and count toward no total". Kept in
     `checked`, they made a checkout with a CHANGELOG print 36/40 and a miscount (D973)."""
-    (complete / "CHANGELOG.md").write_text("# 0.1.0 - first\n", encoding="utf-8")
-    report = cv.check(complete, tag="v0.1.0")
+    (complete / "CHANGELOG.md").write_text(f"# {RELEASE} - first\n", encoding="utf-8")
+    report = cv.check(complete, tag=f"v{RELEASE}")
     assert len(report.checked) == cv.TOTAL_SITES
     assert report.asserted == [
-        "git tag = v0.1.0 (asserted, never written)",
-        "CHANGELOG.md: topmost heading names 0.1.0",
+        f"git tag = v{RELEASE} (asserted, never written)",
+        f"CHANGELOG.md: topmost heading names {RELEASE}",
     ]
     assert report.ok(require_all_sites=True)
 
@@ -485,7 +510,7 @@ def test_set_rewrites_thirty_eight_of_the_forty_on_a_minor(complete: Path) -> No
     )
     assert 'version = "1.0.0"' in ports
     manifest = complete / "packages/omniweave-core/src/omniweave_core/drivers/first_party.toml"
-    assert 'release = "0.1.0"' in manifest.read_text(encoding="utf-8")
+    assert f'release = "{RELEASE}"' in manifest.read_text(encoding="utf-8")
 
 
 def test_set_rewrites_seventeen_on_a_patch_and_the_eighteenth_is_the_build_job(
@@ -570,7 +595,7 @@ def test_main_returns_zero_on_the_real_workspace_and_one_when_a_site_is_wrong(
 ) -> None:
     assert cv.main(["--repo", str(REPO)]) == 0
     assert "G5 PASS" in capsys.readouterr().out
-    _edit(workspace / "packages" / "omniweave-graph" / "pyproject.toml", '"0.1.0"', '"0.1.4"')
+    _edit(workspace / "packages" / "omniweave-graph" / "pyproject.toml", f'"{RELEASE}"', '"0.1.4"')
     assert cv.main(["--repo", str(workspace)]) == 1
     assert "G5 FAIL" in capsys.readouterr().out
 
