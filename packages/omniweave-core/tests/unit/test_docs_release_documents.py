@@ -15,6 +15,7 @@ note is wrong and this test says so.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Final
 
@@ -42,6 +43,30 @@ _SLUG: Final = re.compile(r"github(?:\\)?\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)
 
 SLUG_NOTE: Final = "The repository slug disagrees with itself."
 """The declared exception in `docs/verify.md`'s "Before the first release" section."""
+
+_SEMVER: Final = re.compile(r"(?<![\w.])v?(\d+\.\d+\.\d+)(?![\w.])")
+"""Every version in these documents, with an optional `v` prefix stripped by the capture.
+
+The prefix is why this is not `\\b\\d+\\.\\d+\\.\\d+\\b`. That was the first spelling here, and it
+cannot match `v0.1.0` AT ALL: `v` is a word character, so there is no word boundary between it and
+the `0`, and every tag in every recipe was invisible to it. Reverting `--source-tag v1.0.0` to
+`v0.1.0` left the test below PASSING, which is clause d0's lesson -- a regex that silently matches
+nothing turns the assertion above it into a pass -- and it was caught by driving the mutation
+rather than by reading the pattern.
+"""
+
+RELEASE: Final[str] = tomllib.loads(
+    (REPO_ROOT / "packages" / "omniweave-core" / "pyproject.toml").read_text(encoding="utf-8")
+)["project"]["version"]
+"""`RELEASE`, read from the one site that declares it."""
+
+NOT_THE_RELEASE: Final[frozenset[str]] = frozenset({"4.30.1"})
+"""Versions in these documents that are deliberately NOT `RELEASE`, each with its reason.
+
+`4.30.1` is `pypdfium2`'s, in `driver-authors.md`'s worked `dependencies = ["pypdfium2>=4.30,
+!=4.30.1"]` -- a third party's yanked patch, which has nothing to do with ours and must not move
+when ours does.
+"""
 
 
 @pytest.mark.parametrize("document", [VERIFY, TRIGGER, AUTHORS], ids=lambda one: one.name)
@@ -186,3 +211,46 @@ def test_the_slug_note_is_present_exactly_while_the_workflow_disagrees() -> None
             f"release.yml verifies against {workflow.group(1)} and llms.py publishes {homepage}; "
             "docs/verify.md must say so until they agree"
         )
+
+
+@pytest.mark.parametrize("document", [VERIFY, TRIGGER, AUTHORS], ids=lambda one: one.name)
+def test_every_version_a_reader_would_type_is_this_release(document: Path) -> None:
+    """D1022's lesson, held so it cannot happen twice.
+
+    `docs/verify.md` prints `RELEASE` and the repository slug VERBATIM in each recipe, on purpose:
+    *"a recipe a reader has to assemble is a recipe a reader gets wrong."* The cost of that choice
+    is that a release bump rots every recipe at once, and nothing noticed -- after `--set 1.0.0`
+    all four still named `omniweave_core-0.1.0-py3-none-any.whl` and `--source-tag v0.1.0`, so
+    checklist step 15, whose whole job is *"a recipe that no longer works, discovered by a user"*,
+    would have been the thing that discovered it.
+
+    So every semver in these documents is `RELEASE` unless it is a declared exception with a
+    reason. The exception set is held in both directions below.
+    """
+    found = set(_SEMVER.findall(document.read_text(encoding="utf-8")))
+    stale = found - {RELEASE} - NOT_THE_RELEASE
+    assert not stale, (
+        f"{document.name} names {sorted(stale)}, which is neither {RELEASE} nor declared"
+    )
+
+
+def test_the_not_the_release_set_is_used_and_is_not_a_blanket() -> None:
+    """The exception, checked the other way. A version listed here that no document carries is an
+    exemption nobody needs, and one that happens to equal `RELEASE` would silently excuse the thing
+    the test above exists to catch."""
+    carried = set()
+    for document in (VERIFY, TRIGGER, AUTHORS):
+        carried |= set(_SEMVER.findall(document.read_text(encoding="utf-8")))
+    assert carried >= NOT_THE_RELEASE, (
+        f"declared but absent: {sorted(NOT_THE_RELEASE - carried)}; drop it from NOT_THE_RELEASE"
+    )
+    assert RELEASE not in NOT_THE_RELEASE, "the release cannot be its own exception"
+
+
+def test_verify_mds_recipes_name_the_wheel_and_the_tag_this_release_builds() -> None:
+    """Not just "a version appears" -- the two spellings a reader copies: the wheel filename that
+    `build` actually writes, and the `v`-prefixed tag that `release.yml` triggers on."""
+    text = VERIFY.read_text(encoding="utf-8")
+    assert f"omniweave_core-{RELEASE}-py3-none-any.whl" in text
+    assert f"--source-tag v{RELEASE}" in text
+    assert f"first-party-{RELEASE}.json" in text

@@ -6,14 +6,14 @@ Specified by [the repository layout](plan/11-repo-layout.md) §7.5. Checklist st
 from a clean machine against the published wheel, which is the only run that catches a recipe that
 has stopped working before a user does.
 
-Throughout, `RELEASE` is the version without its leading `v` — `0.1.0` for tag `v0.1.0` — and the
+Throughout, `RELEASE` is the version without its leading `v` — `1.0.0` for tag `v1.0.0` — and the
 repository is `tatra-labs/OmniWeave`. Both appear verbatim in each recipe rather than as shell
 variables, because a recipe a reader has to assemble is a recipe a reader gets wrong.
 
 ## 1. A wheel's build provenance
 
 ```bash
-gh attestation verify omniweave_core-0.1.0-py3-none-any.whl --repo tatra-labs/OmniWeave
+gh attestation verify omniweave_core-1.0.0-py3-none-any.whl --repo tatra-labs/OmniWeave
 ```
 
 This is the GitHub build attestation: the wheel was built by a workflow in this repository, at a
@@ -22,9 +22,9 @@ commit this repository contains.
 ## 2. The SLSA provenance for the whole release
 
 ```bash
-slsa-verifier verify-artifact omniweave_core-0.1.0-py3-none-any.whl \
+slsa-verifier verify-artifact omniweave_core-1.0.0-py3-none-any.whl \
   --provenance-path provenance.intoto.jsonl \
-  --source-uri github.com/tatra-labs/OmniWeave --source-tag v0.1.0
+  --source-uri github.com/tatra-labs/OmniWeave --source-tag v1.0.0
 ```
 
 `provenance.intoto.jsonl` covers **all 28 release files** as its subjects — fourteen sdists and
@@ -57,7 +57,7 @@ accept **any** valid Sigstore signature, which verifies that someone signed some
 ```bash
 python -c "import importlib.resources as r, sys; \
   sys.stdout.write(r.files('omniweave_core.drivers').joinpath('first_party.toml').read_text())" \
-  | python tools/manifest_diff.py first-party-0.1.0.json -
+  | python tools/manifest_diff.py first-party-1.0.0.json -
 ```
 
 [The driver system](plan/04-driver-system.md) §4.2 computes a driver's trust as `first_party` when
