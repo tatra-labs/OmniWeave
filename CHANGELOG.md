@@ -1,8 +1,14 @@
-# 0.1.0 - unreleased
+# 1.0.0 - unreleased
 
-The first release. omniweave indexes documents into a local SQLite corpus, keeping page and
-polygon provenance. It serves cited passages to an agent over MCP, and compiles agent output back
-into editable PPTX and DOCX. It is local-first and makes no network calls by default.
+The first published release. omniweave indexes documents into a local SQLite corpus, keeping page
+and polygon provenance. It serves cited passages to an agent over MCP, and compiles agent output
+back into editable PPTX and DOCX. It is local-first and makes no network calls by default.
+
+`v0.1.0` is **not** a published release and has no section here. It is a tag cut on
+2026-10-23 (D979) over the v0.1 acceptance set, for one purpose: G13 and G16 hold that the
+previous two releases' template Drivers still load against HEAD, and a gate with no previous
+release to load passes vacuously. Nothing was ever uploaded under that version. `1.0.0` is
+therefore the first version a consumer can install, and the first `RELEASE` this file describes.
 
 ## What ships
 

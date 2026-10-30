@@ -1257,7 +1257,7 @@ wheels = [
 
 [[package]]
 name = "omniweave"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave" }
 dependencies = [
     { name = "omniweave-core" },
@@ -1325,7 +1325,7 @@ provides-extras = ["office", "pdf", "vision", "graph", "llm", "serve", "pptx", "
 
 [[package]]
 name = "omniweave-conform"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-conform" }
 dependencies = [
     { name = "omniweave-core" },
@@ -1342,7 +1342,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-core"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-core" }
 dependencies = [
     { name = "omniweave-ports" },
@@ -1362,7 +1362,7 @@ provides-extras = ["sqlite"]
 
 [[package]]
 name = "omniweave-graph"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-graph" }
 dependencies = [
     { name = "omniweave-ports" },
@@ -1388,7 +1388,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-llm"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-llm" }
 dependencies = [
     { name = "omniweave-ports" },
@@ -1434,7 +1434,7 @@ dev = [
 
 [[package]]
 name = "omniweave-office"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-office" }
 dependencies = [
     { name = "defusedxml" },
@@ -1451,7 +1451,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-pdf"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-pdf" }
 dependencies = [
     { name = "defusedxml" },
@@ -1473,7 +1473,7 @@ source = { editable = "packages/omniweave-ports" }
 
 [[package]]
 name = "omniweave-serve"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-serve" }
 dependencies = [
     { name = "mcp" },
@@ -1490,7 +1490,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-target-deck"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-target-deck" }
 dependencies = [
     { name = "omniweave-core" },
@@ -1505,7 +1505,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-target-docx"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-target-docx" }
 dependencies = [
     { name = "lxml" },
@@ -1524,7 +1524,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-target-pptx"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-target-pptx" }
 dependencies = [
     { name = "lxml" },
@@ -1551,7 +1551,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-target-video"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-target-video" }
 dependencies = [
     { name = "omniweave-core" },
@@ -1566,7 +1566,7 @@ requires-dist = [
 
 [[package]]
 name = "omniweave-vision"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "packages/omniweave-vision" }
 dependencies = [
     { name = "omniweave-ports" },
