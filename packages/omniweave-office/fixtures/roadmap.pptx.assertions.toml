@@ -26,3 +26,4 @@ page = 1
 before = "Roadmap to the spring release"
 after = "the reader index ships first"
 slices = ["office/labelled", "office/pptx"]
+checked = "verified"

@@ -19,6 +19,7 @@ from omniweave_conform.release import (
     hard_gates,
     latest,
 )
+from omniweave_conform.rollup import MACRO
 from omniweave_core.drivers.card import MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import (
@@ -639,3 +640,77 @@ def test_one_part_that_differs_on_this_cell_refuses_the_release(tmp_path: Path) 
     (finding,) = done["findings"]  # type: ignore[misc]
     assert finding["names"] == "cell_identity@shape in portability/omniweave run r5"
     assert finding["why"] == "0.975 is not the hard budget 1.0"
+
+
+# ---------------------------------------------------------------------------
+# D1023: a thin slice beside a macro that computed is disclosed, not refused
+# ---------------------------------------------------------------------------
+
+
+def _thin(run_id: str, metric: str, key: str, n: int) -> Metric:
+    """A slice under `min_slice_n`, as 13:406 requires one: `method = none`, no value."""
+    return _unknown(run_id, metric, slice_key=key, n=n)
+
+
+def test_a_thin_slice_beside_a_computed_macro_is_disclosed(tmp_path: Path) -> None:
+    """D1023, a user ruling of 2026-10-30.
+
+    13:406 REQUIRES the thin slice's own row so it *"never silently drops out of the macro mean"*,
+    and ruling 3 refused every `UNKNOWN` row. Both held only until a corpus had a fat slice and a
+    thin one at once -- which is D1002's one-coarse-slice-per-family exactly. On the shipped corpus
+    that was eighteen rows, and eighteen refusals for the honest report the register asked for.
+    """
+    rows = (
+        *_CLEAN[1],
+        _metric("r1", "structure_f1", slice_key=MACRO, n=33, value=0.954),
+        _metric("r1", "structure_f1", slice_key="office/labelled", n=33, value=0.954),
+        _thin("r1", "structure_f1", "office/docx", 6),
+        _thin("r1", "structure_f1", "office/xls", 1),
+    )
+    judged = _judge(tmp_path, metrics=rows)
+    assert _kinds(judged) == [], "a thin slice refuses nothing"
+    thin = [f for f in judged.disclosed if f.kind == "under-min-slice"]
+    assert [f.names.split("@")[1].split(" in ")[0] for f in thin] == ["office/docx", "office/xls"]
+    assert "6 of 30 (13:406), and the macro computed" in thin[0].why
+    assert judged.ok
+
+
+def test_an_unknown_macro_still_refuses_and_takes_its_slices_with_it(tmp_path: Path) -> None:
+    """The narrowness, driven. A metric whose HEADLINE is unknown has measured nothing anyone may
+    read, so neither it nor its slices are excused -- otherwise a metric with no fat slice at all
+    would disclose its way to exit 0, which is the hole this ruling must not open."""
+    rows = (
+        *_CLEAN[1],
+        _unknown("r1", "structure_f1", slice_key=MACRO, n=0),
+        _thin("r1", "structure_f1", "office/docx", 6),
+    )
+    judged = _judge(tmp_path, metrics=rows)
+    assert [name for _kind, name in _kinds(judged)] != [], "an unknown macro refuses"
+    refused = {name.split("@")[1].split(" in ")[0] for _kind, name in _kinds(judged)}
+    assert refused == {MACRO, "office/docx"}
+    assert not judged.ok
+
+
+def test_a_slice_unknown_for_another_reason_is_not_excused(tmp_path: Path) -> None:
+    """`method = "none"` with `0 < n` is what says "under min_slice_n" and nothing else does. A row
+    that is unknown with a method, or with no population at all, is a different gap."""
+    rows = (
+        *_CLEAN[1],
+        _metric("r1", "structure_f1", slice_key=MACRO, n=33, value=0.954),
+        _metric(
+            "r1",
+            "structure_f1",
+            slice_key="office/docx",
+            n=6,
+            value=None,
+            ci_lo=None,
+            ci_hi=None,
+            method="exact",
+            state="unknown",
+        ),
+        _thin("r1", "structure_f1", "office/odp", 0),
+    )
+    judged = _judge(tmp_path, metrics=rows)
+    refused = {name.split("@")[1].split(" in ")[0] for _kind, name in _kinds(judged)}
+    assert refused == {"office/docx", "office/odp"}, "neither is an under-min row"
+    assert not judged.ok

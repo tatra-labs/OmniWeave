@@ -26,3 +26,4 @@ page = 1
 before = "Retention policy"
 after = "This policy covers every document the archive holds."
 slices = ["office/labelled", "office/docx"]
+checked = "verified"

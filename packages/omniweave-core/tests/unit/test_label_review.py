@@ -432,12 +432,20 @@ def test_every_committed_reference_row_agrees_with_the_bytes_or_is_named_unconfi
     assert unknown == ["s04", "s05"], "the two OMML rows of rich.docx and nothing else"
 
 
-def test_the_signature_unit_is_the_document_and_nothing_is_signed_yet() -> None:
-    """`structure` ruling 3: a document scores only when EVERY row of its reference is verified."""
+def test_the_signature_unit_is_the_document_and_every_one_is_signed_whole() -> None:
+    """`structure` ruling 3: a document scores only when EVERY row of its reference is verified.
+
+    This asserted `{None}` -- "this repository has signed no reference row" -- until the reviewer
+    signed on 2026-10-30. The ruling it tests is about the UNIT, not about the count, so what it
+    says now is that no document is part-signed: a reference with some rows verified and some not
+    has no precision denominator, which is the defect ruling 3 exists to prevent.
+    """
     grouped = TOOL.documents(TOOL.read_structure(REPO))
     assert len(grouped) == 33
-    signed = {one.reference.checked for group in grouped.values() for one in group}
-    assert signed == {None}, "this repository has signed no reference row"
+    for name, group in grouped.items():
+        signed = {one.reference.checked for one in group}
+        assert len(signed) == 1, f"{name} is part-signed: {sorted(signed, key=str)}"
+        assert signed == {"verified"}, name
 
 
 def test_a_reference_row_the_bytes_do_not_carry_disagrees() -> None:

@@ -14,3 +14,4 @@ page = 1
 before = "Release plan"
 after = "one slide is enough"
 slices = ["office/labelled", "office/odp"]
+checked = "verified"

@@ -26,3 +26,4 @@ page = 1
 before = "14 October 2026"
 after = "Dear Archivist,"
 slices = ["office/labelled", "office/rtf"]
+checked = "verified"

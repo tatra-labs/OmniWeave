@@ -26,3 +26,4 @@ page = 1
 before = "name"
 after = "shift"
 slices = ["office/labelled", "office/csv"]
+checked = "verified"

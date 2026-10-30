@@ -17,6 +17,7 @@ page = 1
 cell = "Item"
 right = "Assessed"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t02-assessed-between"
@@ -26,6 +27,7 @@ cell = "Assessed"
 left = "Item"
 right = "Treated"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t03-item-column"
@@ -34,6 +36,7 @@ page = 1
 cell = "Item"
 down = "Maps"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t04-maps-row"
@@ -43,6 +46,7 @@ cell = "Maps"
 right = "412"
 top_heading = "Item"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t05-assessed-maps"
@@ -52,6 +56,7 @@ cell = "412"
 up = "Assessed"
 left = "Maps"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t06-treated-maps"
@@ -61,6 +66,7 @@ cell = "38"
 up = "Treated"
 left = "412"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t07-ledgers-between"
@@ -70,6 +76,7 @@ cell = "Ledgers"
 up = "Maps"
 down = "Photographs"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t08-assessed-ledgers"
@@ -79,6 +86,7 @@ cell = "96"
 up = "412"
 right = "11"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t09-assessed-photographs"
@@ -88,6 +96,7 @@ cell = "1507"
 up = "96"
 top_heading = "Assessed"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t10-treated-photographs"
@@ -101,6 +110,7 @@ slices = ["office/has_merges=1"]
 # --- the row-wide merge, on the owdoc evaluator ----------------------------------------------
 # One cell covers all three columns, so every cell of the row above answers `down` with it --
 # which is `Grid.down` stepping literally one row onto the covering origin (`cells` ruling 2).
+checked = "verified"
 
 [[assertion]]
 id = "c01-merged-origin"
@@ -109,6 +119,7 @@ page = 1
 cell = "Totalled across every item"
 up = "Photographs"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c02-merged-heading"
@@ -117,6 +128,7 @@ page = 1
 cell = "Totalled across every item"
 top_heading = "Item"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c03-photographs-down"
@@ -125,6 +137,7 @@ page = 1
 cell = "Photographs"
 down = "Totalled across every item"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c04-assessed-down"
@@ -133,6 +146,7 @@ page = 1
 cell = "1507"
 down = "Totalled across every item"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c05-treated-down"
@@ -141,6 +155,7 @@ page = 1
 cell = "203"
 down = "Totalled across every item"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c06-maps-heading"
@@ -149,3 +164,4 @@ page = 1
 cell = "Maps"
 top_heading = "Item"
 slices = ["office/has_merges=1"]
+checked = "verified"

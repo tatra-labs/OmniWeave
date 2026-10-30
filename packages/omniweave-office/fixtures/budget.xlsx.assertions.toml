@@ -26,3 +26,4 @@ page = 1
 before = "Line"
 after = "Budgeted"
 slices = ["office/labelled", "office/xlsx"]
+checked = "verified"

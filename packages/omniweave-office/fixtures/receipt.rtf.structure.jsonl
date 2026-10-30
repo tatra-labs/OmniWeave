@@ -1,5 +1,5 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Receipt {2026-114}"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Paid in full on 20 October 2026."}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Reference: NA\\2026\\114"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Thank you."}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Receipt {2026-114}", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Paid in full on 20 October 2026.", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Reference: NA\\2026\\114", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Thank you.", "checked": "verified"}

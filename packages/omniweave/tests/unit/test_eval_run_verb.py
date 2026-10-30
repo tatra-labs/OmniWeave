@@ -157,31 +157,64 @@ REFERENCE_FIX = (
     ".structure.jsonl row you confirm against its document -- every row of a document, since a "
     "part-signed reference has no precision denominator -- then ow eval run --suite parse"
 )
-DRAFTED = [
-    "  metric      order_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 35 "
-    "unverified assertion(s) ran and were not scored (13:1022)",
-    LABELS_FIX,
-    "  metric      order_acc@__macro__ in parse/parse.pdf.pdfium run <id>: UNKNOWN; 60 "
-    "unverified assertion(s) ran and were not scored (13:1022)",
-    LABELS_FIX,
-    "  metric      structure_f1@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 33 of "
-    "33 referenced document(s) not scored; 277 reference row(s) unsigned (ruling 3)",
-    REFERENCE_FIX,
-    "  metric      table_rel_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 40 "
-    "unverified assertion(s) ran and were not scored (13:1022)",
-    LABELS_FIX,
-]
-"""D913: the drafted labels' rates, each refused and naming the verification as its fix. D982
-added `structure_f1` over the ten drafted `.structure.jsonl` references, whose fix names those
-rows and not the assertions file's.
+THIN_SLICES: tuple[tuple[str, str, int], ...] = (
+    ("structure_f1", "office/csv", 3),
+    ("structure_f1", "office/docx", 6),
+    ("structure_f1", "office/docx/has_merges=1", 2),
+    ("structure_f1", "office/epub", 3),
+    ("structure_f1", "office/odp", 3),
+    ("structure_f1", "office/ods", 4),
+    ("structure_f1", "office/ods/has_merges=1", 2),
+    ("structure_f1", "office/odt", 3),
+    ("structure_f1", "office/pptx", 3),
+    ("structure_f1", "office/rtf", 3),
+    ("structure_f1", "office/xls", 1),
+    ("structure_f1", "office/xlsx", 4),
+    ("structure_f1", "office/xlsx/has_merges=1", 2),
+    ("table_rel_acc", "office/csv", 2),
+    ("table_rel_acc", "office/docx", 1),
+    ("table_rel_acc", "office/ods", 1),
+    ("table_rel_acc", "office/xls", 1),
+    ("table_rel_acc", "office/xlsx", 2),
+)
+"""Every office slice that cannot reach `min_slice_n`, with the population it holds."""
 
-The office `order_acc` population reads 35 and not 15 since D1020 and D1021 (user rulings of
-2026-10-29). 15 was unfixable by any signature: a verdict takes its assertion's FIRST slice only
-(`judge` ruling 5), those 15 led with six per-format keys of 3, 4, 1, 3, 2 and 2, and a macro
-admits no slice under `min_slice_n = 30`. They now lead with `office/labelled`, and
-`gen_labelled_office.py` writes one generated `order` claim for each of the 20 labelled documents
-that had no labels file. So this number IS the thing those rulings changed, and a regression that
-undoes either half lands here as 15 or 20."""
+THIN_FIX = (
+    "nothing, unless this slice is meant to carry a floor of its own: it is "
+    "reported because 13-quality.md:406 says a slice under min_slice_n never silently drops out "
+    "of the macro mean, and the macro it was left out of computed. Growing it past 30 documents "
+    "or verdicts is the only thing that changes this row"
+)
+
+THIN = [
+    line
+    for metric, key, n in THIN_SLICES
+    for line in (
+        f"  under-min-slice  {metric}@{key} in parse/parse.office.anydoc run <id>: "
+        f"UNKNOWN; {n} of 30 (13:406), and the macro computed",
+        "              fix: " + THIN_FIX,
+    )
+]
+"""**WHAT CHECKLIST STEP 6 PRINTS NOW, AND IT REFUSES NOTHING.**
+
+This list held four `metric` REFUSALS until 2026-10-30 -- `order_acc` twice, `structure_f1` and
+`table_rel_acc` -- each one "unknown until a reviewer verifies 30 in a slice" (D913, D982). The
+reviewer verified all 178 assertion labels and all 33 structure references, and every rate
+computed and met its floor:
+
+    structure_f1  office/labelled             0.9540 over 33   floor 0.90
+    order_acc     office/labelled             1.0000 over 35   ungated
+    order_acc     pdf/born_digital/contracts  1.0000 over 60   floor 0.75
+    table_rel_acc office/has_merges=1         1.0000 over 51   floor 0.70
+
+What is printed instead is eighteen DISCLOSURES: the per-extension slices that can never reach
+thirty, each with its `n`, reported because 13:406 will not let a thin slice drop silently out of
+the macro mean and refusing nothing because the macro it was left out of computed (D1023, a user
+ruling of 2026-10-30).
+
+`order_acc` has none, which is the other half of D1021: every office order verdict leads with the
+coarse key and every PDF one with `pdf/born_digital/contracts`, so that metric has no thin slice
+at all."""
 UNDER_MIN = [
     "  declared-unknown  false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; "
     "0 of 13 answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",
@@ -204,7 +237,7 @@ def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Pa
     code, out, _ = _eval("release-check", "--oweval", str(store))
     assert code == 1
     assert _masked(out) == [
-        *DRAFTED,
+        *THIN,
         "  unmeasured  hard gate degradation_detection@*: no absence run measured it",
         "              fix: run the gate's suite: ow eval run --suite absence",
         "  unmeasured  hard gate citability_violations@*: no retrieve run measured it",
@@ -213,7 +246,7 @@ def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Pa
         "              fix: run the gate's suite: ow eval run --suite roundtrip",
         "  unmeasured  hard gate cell_identity@*: no portability run measured it",
         "              fix: run the gate's suite: ow eval run --suite portability",
-        "ow eval release-check: refused, 8 finding(s); 2 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 4 finding(s); 2 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
     ]
 
@@ -276,16 +309,16 @@ def test_every_built_suite_by_default_and_release_check_refuses_only_the_drafted
     )
     assert handed == [admission.admit]
     code, out, err = _eval("release-check", "--oweval", str(store))
-    assert (code, err) == (1, "")
+    assert (code, err) == (0, ""), "checklist step 6, with every suite measured and signed"
     assert _masked(out) == [
+        *THIN,
         *UNDER_MIN,
-        *DRAFTED,
-        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded,"
-        " 5 hard gate(s)",
+        "ow eval release-check: ok; 10 latest run(s), 0 superseded, 5 hard gate(s)",
     ], (
-        "D913: every hard gate holds and the unverified labels' rates refuse. FOUR findings and "
-        "not five since D1017: D933's ceiling is disclosed above rather than counted, so the "
-        "reviewer's signature is the only input between this output and exit 0"
+        "**CHECKLIST STEP 6, GREEN.** Every hard gate holds, every drafted rate is measured and "
+        "meets its floor, and the only things printed are disclosures: D1023's eighteen thin "
+        "slices and D1017's declared unknown. The reviewer signed on 2026-10-30, which was the "
+        "one input this output had been waiting on since D913"
     )
 
 

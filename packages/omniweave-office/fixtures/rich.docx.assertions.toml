@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Quarterly report"
 slices = ["office/docx"]
+checked = "verified"
 
 [[assertion]]
 id = "title-figures"
@@ -21,6 +22,7 @@ page = 1
 before = "Quarterly report"
 after = "Figures"
 slices = ["office/labelled", "office/docx"]
+checked = "verified"
 
 [[assertion]]
 id = "figures-list"
@@ -29,6 +31,7 @@ page = 1
 before = "Figures"
 after = "first item"
 slices = ["office/labelled", "office/docx"]
+checked = "verified"
 
 [[assertion]]
 id = "list-order"
@@ -37,6 +40,7 @@ page = 1
 before = "first item"
 after = "second item"
 slices = ["office/labelled", "office/docx"]
+checked = "verified"
 
 [[assertion]]
 id = "q1-revenue"
@@ -46,6 +50,7 @@ cell = "Q1"
 right = "120"
 up = "Quarter"
 slices = ["office/docx"]
+checked = "verified"
 
 [[assertion]]
 id = "merged-total"
@@ -54,3 +59,4 @@ page = 1
 cell = "Total across both quarters"
 up = "Q1"
 slices = ["office/has_merges=1"]
+checked = "verified"

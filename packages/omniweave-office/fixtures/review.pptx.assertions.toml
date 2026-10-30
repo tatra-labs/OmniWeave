@@ -26,3 +26,4 @@ page = 1
 before = "Quarter in review"
 after = "reader visits up by a fifth"
 slices = ["office/labelled", "office/pptx"]
+checked = "verified"

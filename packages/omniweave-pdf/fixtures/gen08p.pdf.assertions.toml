@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Article 1. Schedule and severance"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-heading-first"
@@ -21,6 +22,7 @@ page = 1
 before = "Article 1. Schedule and severance"
 after = "schedule severance inspection counterpart custody effective"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-first-fifth"
@@ -29,6 +31,7 @@ page = 1
 before = "schedule severance inspection counterpart custody effective"
 after = "deliverable assignment resolution quarterly termination liability"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-fifth-last"
@@ -37,6 +40,7 @@ page = 1
 before = "deliverable assignment resolution quarterly termination liability"
 after = "effective escalation breach priority threshold condition warranty exhibit"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p1-last-cell"
@@ -45,6 +49,7 @@ page = 1
 before = "effective escalation breach priority threshold condition warranty exhibit"
 after = "R0C0-0031"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-heading"
@@ -52,6 +57,7 @@ type = "present"
 page = 2
 text = "Article 2. Notice and supplement"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-heading-first"
@@ -60,6 +66,7 @@ page = 2
 before = "Article 2. Notice and supplement"
 after = "notice supplement retention arbitration clause survival acceptance"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-first-fifth"
@@ -68,6 +75,7 @@ page = 2
 before = "notice supplement retention arbitration clause survival acceptance"
 after = "audit governing agreement commencement milestone waiver"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-fifth-last"
@@ -76,6 +84,7 @@ page = 2
 before = "audit governing agreement commencement milestone waiver"
 after = "survival acceptance novation escrow annual renewal remedy"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p2-last-cell"
@@ -84,6 +93,7 @@ page = 2
 before = "survival acceptance novation escrow annual renewal remedy"
 after = "R0C0-0062"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p3-heading"
@@ -91,6 +101,7 @@ type = "present"
 page = 3
 text = "Article 3. Indemnity and definition"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p3-heading-first"
@@ -99,6 +110,7 @@ page = 3
 before = "Article 3. Indemnity and definition"
 after = "indemnity definition interest obligation term variation record"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p3-first-fifth"
@@ -107,6 +119,7 @@ page = 3
 before = "indemnity definition interest obligation term variation record"
 after = "invoice confidential schedule severance inspection counterpart"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p3-fifth-last"
@@ -115,6 +128,7 @@ page = 3
 before = "invoice confidential schedule severance inspection counterpart"
 after = "condition warranty exhibit payment disclosure annex amendment audit"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p3-last-cell"
@@ -123,6 +137,7 @@ page = 3
 before = "condition warranty exhibit payment disclosure annex amendment audit"
 after = "R0C0-0093"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p4-heading"
@@ -130,6 +145,7 @@ type = "present"
 page = 4
 text = "Article 4. Breach and priority"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p4-heading-first"
@@ -138,6 +154,7 @@ page = 4
 before = "Article 4. Breach and priority"
 after = "breach priority threshold condition warranty exhibit payment"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p4-first-fifth"
@@ -146,6 +163,7 @@ page = 4
 before = "breach priority threshold condition warranty exhibit payment"
 after = "adjustment covenant notice supplement retention arbitration"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p4-fifth-last"
@@ -154,6 +172,7 @@ page = 4
 before = "adjustment covenant notice supplement retention arbitration"
 after = "exhibit payment disclosure annex amendment audit governing agreement"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p4-last-cell"
@@ -162,6 +181,7 @@ page = 4
 before = "exhibit payment disclosure annex amendment audit governing agreement"
 after = "R0C0-0124"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p5-heading"
@@ -169,6 +189,7 @@ type = "present"
 page = 5
 text = "Article 5. Novation and escrow"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p5-heading-first"
@@ -177,6 +198,7 @@ page = 5
 before = "Article 5. Novation and escrow"
 after = "novation escrow annual renewal remedy construction allocation"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p5-first-fifth"
@@ -185,6 +207,7 @@ page = 5
 before = "novation escrow annual renewal remedy construction allocation"
 after = "aggregate precedent indemnity definition interest obligation"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p5-fifth-last"
@@ -193,6 +216,7 @@ page = 5
 before = "aggregate precedent indemnity definition interest obligation"
 after = "construction allocation representation consent appendix invoice"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p5-last-cell"
@@ -201,6 +225,7 @@ page = 5
 before = "construction allocation representation consent appendix invoice"
 after = "R0C0-0155"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p6-heading"
@@ -208,6 +233,7 @@ type = "present"
 page = 6
 text = "Article 6. Jurisdiction and party"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p6-heading-first"
@@ -216,6 +242,7 @@ page = 6
 before = "Article 6. Jurisdiction and party"
 after = "jurisdiction party expiry deliverable assignment resolution"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p6-first-fifth"
@@ -224,6 +251,7 @@ page = 6
 before = "jurisdiction party expiry deliverable assignment resolution"
 after = "effective escalation breach priority threshold condition"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p6-fifth-last"
@@ -232,6 +260,7 @@ page = 6
 before = "effective escalation breach priority threshold condition"
 after = "resolution quarterly termination liability interpretation adjustment"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p6-last-cell"
@@ -240,6 +269,7 @@ page = 6
 before = "resolution quarterly termination liability interpretation adjustment"
 after = "R0C0-0186"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p7-heading"
@@ -247,6 +277,7 @@ type = "present"
 page = 7
 text = "Article 7. Disclosure and annex"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p7-heading-first"
@@ -255,6 +286,7 @@ page = 7
 before = "Article 7. Disclosure and annex"
 after = "disclosure annex amendment audit governing agreement commencement"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p7-first-fifth"
@@ -263,6 +295,7 @@ page = 7
 before = "disclosure annex amendment audit governing agreement commencement"
 after = "survival acceptance novation escrow annual renewal"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p7-fifth-last"
@@ -271,6 +304,7 @@ page = 7
 before = "survival acceptance novation escrow annual renewal"
 after = "agreement commencement milestone waiver conflict aggregate precedent"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p7-last-cell"
@@ -279,6 +313,7 @@ page = 7
 before = "agreement commencement milestone waiver conflict aggregate precedent"
 after = "R0C0-0217"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p8-heading"
@@ -286,6 +321,7 @@ type = "present"
 page = 8
 text = "Article 8. Representation and consent"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p8-heading-first"
@@ -294,6 +330,7 @@ page = 8
 before = "Article 8. Representation and consent"
 after = "representation consent appendix invoice confidential schedule"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p8-first-fifth"
@@ -302,6 +339,7 @@ page = 8
 before = "representation consent appendix invoice confidential schedule"
 after = "variation record jurisdiction party expiry deliverable"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p8-fifth-last"
@@ -310,6 +348,7 @@ page = 8
 before = "variation record jurisdiction party expiry deliverable"
 after = "schedule severance inspection counterpart custody effective"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "p8-last-cell"
@@ -318,9 +357,11 @@ page = 8
 before = "schedule severance inspection counterpart custody effective"
 after = "R0C0-0248"
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"
 
 [[assertion]]
 id = "no-further-article"
 type = "absent"
 text = "Article 9."
 slices = ["pdf/born_digital/contracts"]
+checked = "verified"

@@ -1,9 +1,9 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Reading room handbook"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The reading room is open on weekday afternoons."}
-{"id": "s03", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Before you arrive"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Order material at least one working day ahead."}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Bring photographic identification."}
-{"id": "s06", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "In the room"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Pencils only, and one box on the desk at a time."}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Photography without flash is permitted."}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Reading room handbook", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The reading room is open on weekday afternoons.", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Before you arrive", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Order material at least one working day ahead.", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Bring photographic identification.", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "In the room", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Pencils only, and one box on the desk at a time.", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Photography without flash is permitted.", "checked": "verified"}

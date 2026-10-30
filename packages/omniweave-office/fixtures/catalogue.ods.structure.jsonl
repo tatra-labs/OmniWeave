@@ -1,13 +1,13 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Reference"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Title"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Year"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Boxes"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "NA/1/1"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour board minutes"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1894"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "7"}
-{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "NA/1/2"}
-{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour board accounts"}
-{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1897"}
-{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "3"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Reference", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Title", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Year", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Boxes", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "NA/1/1", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour board minutes", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1894", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "7", "checked": "verified"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "NA/1/2", "checked": "verified"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour board accounts", "checked": "verified"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1897", "checked": "verified"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "3", "checked": "verified"}
