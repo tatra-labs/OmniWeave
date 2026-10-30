@@ -579,8 +579,16 @@ def _labelled(
             path, fixtures_dir=base, corpus_id=corpus.corpus_id, corpus_version=corpus.version
         )
     )
+    #  `slices=` is not optional here, though the signature allows it. A `.structure.jsonl` row
+    #  declares no slices of its own, so it inherits the fixture sidecar's exactly as an assertion
+    #  does (`labels` ruling 4) -- and without this argument every row inherits nothing, `score()`
+    #  falls back to `*`, and `fnmatchcase("*", "office/*")` is FALSE, so `structure_f1`'s blocking
+    #  0.90 floor matches no row at all. That is the "law over an empty set" eval/gates.toml's own
+    #  header describes, and it was live until this line was fixed.
     refs = {
-        path.relative_to(base).as_posix(): structure.load(path)
+        path.relative_to(base).as_posix(): structure.load(
+            path, slices=labels.sidecar_slices(path)
+        )
         for path in files
         if structure.reference_of(path).is_file()
     }

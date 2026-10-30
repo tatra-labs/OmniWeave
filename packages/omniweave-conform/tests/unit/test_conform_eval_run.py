@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import sys
 import tomllib
+from fnmatch import fnmatchcase
 from itertools import count
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,11 +20,13 @@ from typing import Any
 import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
+from omniweave_conform import labels as labels_half
 from omniweave_conform import portability as cell_harness
 from omniweave_conform import release as release_half
 from omniweave_conform import removal as removal_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
+from omniweave_conform import structure as structure_half
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
 from omniweave_conform.entry import run as entry_run
 from omniweave_conform.release import SUITES as SUITES_SEVEN
@@ -1159,3 +1162,45 @@ def test_a_register_without_the_cell_identity_row_is_a_refusal(
     without = {**REGISTER, "gate": [g for g in REGISTER["gate"] if g["suite"] != "portability"]}
     with pytest.raises(QualityError, match="no portability cell_identity row"):
         _portability(without)
+
+
+def test_a_structure_reference_is_loaded_with_its_fixtures_slices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The argument `_labelled` must pass, and the gate row that is law over nothing without it.
+
+    A `.structure.jsonl` row declares no slices of its own, so it inherits the fixture sidecar's
+    exactly as an assertion does (`labels` ruling 4). `structure.load`'s `slices` keyword defaults
+    to `()`, and `_labelled` called it WITHOUT one: every row inherited nothing, `score()` fell
+    back to the unsliced key `*`, and `fnmatchcase("*", "office/*")` is FALSE -- so
+    `eval/gates.toml`'s blocking `structure_f1@office/*` floor of 0.90 matched no row at all. The
+    register's own header calls that shape *"law over an empty set"*.
+
+    It is asserted on the CALL because nothing downstream shows it while the corpus is unsigned:
+    an unscored document contributes no slice row, so a real run emits only `__macro__ unknown`
+    whether the argument is passed or not. The defect was invisible until the references were
+    signed, which is after a reviewer has done the work.
+    """
+    seen: list[tuple[str, tuple[str, ...]]] = []
+    real = structure_half.load
+
+    def spy(fixture: Path, **kw: Any) -> Any:
+        seen.append((fixture.name, tuple(kw.get("slices", ()))))
+        return real(fixture, **kw)
+
+    monkeypatch.setattr(eval_run.structure, "load", spy)
+    _parse()
+
+    assert seen, "the parse suite loaded no structure reference at all"
+    unsliced = [name for name, slices in seen if not slices]
+    assert not unsliced, f"loaded with no slices, so they land on '*': {unsliced}"
+    #  And the slices are the sidecar's, which is what makes the gate glob match.
+    for name, slices in seen:
+        sidecar = labels_half.sidecar_slices(
+            REPO / "packages" / "omniweave-office" / "fixtures" / name
+        )
+        if sidecar:
+            assert slices == sidecar, name
+            assert any(fnmatchcase(one, "office/*") for one in slices), (
+                f"{name}: no slice matches eval/gates.toml's structure_f1 row"
+            )

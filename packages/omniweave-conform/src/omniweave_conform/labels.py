@@ -69,7 +69,17 @@ if TYPE_CHECKING:
 
     from omniweave_conform.harness import ParseRun
 
-__all__ = ["SCHEMA", "STORE", "SUFFIX", "TYPES", "candidate", "labels_of", "load", "opened"]
+__all__ = [
+    "SCHEMA",
+    "STORE",
+    "SUFFIX",
+    "TYPES",
+    "candidate",
+    "labels_of",
+    "load",
+    "opened",
+    "sidecar_slices",
+]
 
 SUFFIX: Final = ".assertions.toml"
 """Ruling 1: `<file>.assertions.toml` beside the fixture."""
@@ -117,7 +127,7 @@ def load(
         raise QualityError(f"{where}: [[assertion]] is an array of tables", fix=_FIX)
     doc = fixture.relative_to(fixtures_dir).as_posix()
     sha256 = hashlib.sha256(fixture.read_bytes()).hexdigest()
-    default_slices = _sidecar_slices(fixture)
+    default_slices = sidecar_slices(fixture)
     seen: set[str] = set()
     out = []
     for at, row in enumerate(rows, 1):
@@ -204,7 +214,7 @@ def _assertion(
     )
 
 
-def _sidecar_slices(fixture: Path) -> tuple[str, ...]:
+def sidecar_slices(fixture: Path) -> tuple[str, ...]:
     """Ruling 4: `[fixture.tests] slices` from the fixture's `.meta.toml`, or none."""
     sidecar = fixture.with_name(fixture.name + _SIDECAR)
     if not sidecar.is_file():
