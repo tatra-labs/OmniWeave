@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import ast
 import sys
+import tomllib
 from importlib.metadata import version as dist_version
 from pathlib import Path
 
 import pytest
 from omniweave_core import contract
+
+REPO = Path(__file__).resolve().parents[4]
+"""The repository root, for reading `RELEASE` from the one site that declares it."""
 
 SOURCE = Path(contract.__file__)
 
@@ -61,7 +65,15 @@ def test_release_is_the_installed_distribution_version__11_repo_layout_md_sectio
     """Section 4.2's forty version-bearing sites put `RELEASE` in `[project] version` and nowhere in
     `omniweave_core`, so this module reads the declaration rather than repeating it."""
     assert dist_version("omniweave-core") == contract.RELEASE
-    assert contract.RELEASE == "0.1.0"
+    #  READ, not repeated -- which is what the docstring above already promised. A literal here
+    #  pinned `0.1.0` and D1022's bump to `1.0.0` failed it on all six Linux and macOS cells while
+    #  passing locally, because `dist_version` reads INSTALLED metadata and a venv that has not
+    #  been re-synced since the bump still reports the old version. Reading the declaration fails
+    #  the same way on every platform, which is the point of the claim.
+    declared = tomllib.loads(
+        (REPO / "packages" / "omniweave-core" / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]["version"]
+    assert declared == contract.RELEASE
 
 
 # ---------------------------------------------------------------------------
