@@ -114,8 +114,8 @@ Twelve suites run. **Eleven are mandatory**: `card`, `purity`, `contract`, `capa
 Passing the mandatory tier prints a badge string and the sentence you may use:
 
 ```text
-omniweave-conform 0.1.0 · mandatory 11/11 pass · quality unknown · card sha256:…
-and the sentence: "passes the omniweave conformance kit 0.1.0, mandatory suites"
+omniweave-conform 1.0.0 · mandatory 11/11 pass · quality unknown · card sha256:…
+and the sentence: "passes the omniweave conformance kit 1.0.0, mandatory suites"
 ```
 
 What the suites actually hold you to is worth skimming before you write code, because two of them
