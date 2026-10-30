@@ -94,10 +94,28 @@ def clone(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     are here, `E:` to the temp directory on `C:` — with `fatal: failed to create link ... Improper
     link`. A test that only ever ran on a one-drive machine would be a test that fails for its
     first Windows contributor.
+
+    **`--no-tags` is not decoration either, and it was added the hard way.** This fixture builds
+    its own tag set and one of its names is `v1.0.0`. A plain local clone copies the repository's
+    REAL tags across, so the day `v1.0.0` was cut for the actual release, `git tag v1.0.0 HEAD`
+    here failed with exit 128 and took V10-11 from PARTIAL to FAIL — a release tag breaking the
+    test of the gate that reads release tags. The `tagless` fixture below already passed
+    `--no-tags` for the same reason, in its own words: *"a plain local clone copies `v0.1.0`
+    across."* A fixture whose tag set depends on what the repository happens to carry is not a
+    fixture, so this one now starts from none and the assertion below says so.
     """
     target = tmp_path_factory.mktemp("g16") / "clone"
     subprocess.run(  # noqa: S603 — a fixed argv, no shell, and no network: `--local`.
-        ["git", "clone", "--quiet", "--local", "--no-hardlinks", str(repo_root), str(target)],  # noqa: S607
+        [  # noqa: S607
+            "git",
+            "clone",
+            "--quiet",
+            "--local",
+            "--no-hardlinks",
+            "--no-tags",
+            str(repo_root),
+            str(target),
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -105,6 +123,9 @@ def clone(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     git(target, "config", "user.name", "g16-fixture")
     git(target, "config", "user.email", "g16@example.invalid")
+    assert git(target, "tag", "--list").strip() == "", (
+        "the clone inherited a real tag, so this fixture's tag set is not its own"
+    )
 
     # The clean pair, plus two that exist only so the semver ordering has something to get wrong.
     for tag in ("v1.0.0", "v1.1.0", "v1.9.0", "v1.10.0"):
