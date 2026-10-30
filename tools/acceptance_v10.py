@@ -480,26 +480,22 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_contract.py", "--releases", "1", "--offline"),
             pytest(f"{CORE}/test_gate_contract.py", label="G16 over two locally tagged commits"),
         ),
-        Coverage.PARTIAL,
-        # D979 tagged master `v0.1.0` on the user's ruling of 2026-10-23, and `--releases 1` now
-        # takes the real path over it: `git worktree add` at the tag, `uv build --package
+        Coverage.FULL,
+        # FULL since 2026-10-30, and the first row this release's own tag completed. The clause is
+        # TWO releases, and master now carries two: `v0.1.0` (D979, the previous release, cut so
+        # G13 and G16 would have one to load) and `v1.0.0` (checklist step 12). Both are pushed, so
+        # a fresh clone and a CI run see them too -- which is what this row waited on, and the
+        # whole of why its gap text used to end "what is left is the push itself".
+        #
+        # Measured: `gate_contract.py --releases 2 --offline` reads
+        #   G16 ok  2 release(s) load against HEAD: v1.0.0, v0.1.0.
+        #           v1.0.0: parse.text.plain -> PlainTextParser
+        #           v0.1.0: parse.text.plain -> PlainTextParser
+        # by the real path for each -- `git worktree add` at the tag, `uv build --package
         # omniweave-conform` in that tree, then HEAD's `load_card()` and `activate()` over the
-        # tagged wheel's own template -- `parse.text.plain -> PlainTextParser`, its CONTRACT in
-        # HEAD's CONTRACTS_SUPPORTED. The row's clause is two releases, so `--releases 2` is still
-        # vacuous, and both runs exit 0 either way: a vacuous G16 is a pass by 16-roadmap.md:516.
-        "the clause is two releases and master carries one tag, so the `--releases 2` run stays "
-        "vacuous until the next milestone tag; `--releases 1` loads `v0.1.0`'s template Driver "
-        "against HEAD for real (D979). THE TAG IS LOCAL, AND NOTHING IN THIS REPOSITORY KEEPS IT "
-        "SO ANY MORE. Two blockers have been discharged in order: D984 SHA-pinned every "
-        "third-party action in `release.yml`, and D1016 -- a user ruling of 2026-10-29 -- gated "
-        "its publish half off, so `sbom-sign` and `publish` carry "
-        "`if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'` against an unset repository variable. "
-        "An environment gates only the jobs that declare one and `publish` is the only one, so a "
-        "skipped `publish` never reaches a reviewer gate: the `release` environment the old text "
-        "called the remaining blocker is NOT NEEDED at v1.0, and a `v*` tag now runs tag-guard, "
-        "ci, build and provenance and stops. What is left is the push itself, which is the "
-        "reviewer's to make. Until it happens, a CI or fresh-clone run of this row finds no tag "
-        "and passes vacuously",
+        # tagged wheel's own template, its CONTRACT checked against HEAD's CONTRACTS_SUPPORTED.
+        # Nothing here is vacuous any more, so this row no longer passes by 16-roadmap.md:516.
+        "",
     ),
     Criterion(
         "V10-12",

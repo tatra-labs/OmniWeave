@@ -39,17 +39,21 @@ def _load() -> ModuleType:
 a = _load()
 
 
-def test_v10_11s_gap_text_describes_the_release_workflow_this_tree_has() -> None:
-    """D1019. V10-11's gap used to call the `release` environment the remaining blocker, which
-    D1016 discharged in the same cell as this test.
+def test_the_publish_half_is_gated_off_and_needs_no_environment() -> None:
+    """D1019, and what is left of it now that V10-11 PASSES.
 
-    A gap text is prose and no instrument reads it, which is exactly how V10-16's and V10-3's went
-    stale and had to be re-measured (D1007, D1009). So this one is held against the workflow it
-    describes: the condition is asserted as the literal both files carry, and if the publish half
-    is ever ungated this test is what says the row is lying.
+    This was written to keep V10-11's gap text honest -- the gap called the `release` environment
+    the remaining blocker, D1016 discharged that, and a gap text is prose no instrument reads,
+    which is exactly how V10-16's and V10-3's went stale (D1007, D1009). On 2026-10-30 the user
+    pushed `v1.0.0` beside `v0.1.0`, G16 loaded both for real, and the row became FULL with no gap
+    left to hold.
+
+    The CLAIM the gap made is still worth holding, so it is asserted against `release.yml`
+    directly and no longer through a row's prose: the publish half is gated off, and exactly one
+    job declares an environment, which is what makes "a skipped publish never reaches a reviewer
+    gate" true.
     """
     gate = "vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'"
-    row = next(one for one in a.CRITERIA if one.id == "V10-11")
     workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     #  Over the LINES that are the key, not a substring search: the file's own header quotes the
     #  condition in prose, so `f"if: {gate}" in workflow` passes on a workflow where both real
@@ -58,8 +62,6 @@ def test_v10_11s_gap_text_describes_the_release_workflow_this_tree_has() -> None
     assert len(gated) == 2, (
         f"release.yml gates {len(gated)} job(s) on the publish variable, not the two D1016 names"
     )
-    assert gate in row.gap, "V10-11's gap text does not name the condition release.yml carries"
-    assert "NOT NEEDED at v1.0" in row.gap, "the consequence a reader needs is the environment's"
     #  And the claim that makes it true: an environment gates only the jobs declaring one. Counted
     #  over lines that ARE the key, not occurrences of the words -- the header and the job's own
     #  name mention it too, which is how this first read 4.
@@ -67,6 +69,14 @@ def test_v10_11s_gap_text_describes_the_release_workflow_this_tree_has() -> None
     assert len(declaring) == 1, (
         "a second environment-gated job would make the skipped-publish argument incomplete"
     )
+
+
+#  NOT TESTED HERE, and deliberately: "a FULL row carries no gap and a PARTIAL one does" is
+#  enforced at IMPORT by `acceptance_v01.py`'s `Criterion.__post_init__`, which raises
+#  `<id>: a gap is required exactly when coverage is not full`. A test of it was written on
+#  2026-10-30 and removed the same hour: driving the mutation could not make it fail, because the
+#  module cannot be imported in the state it asserted against. A test that cannot fail is worse
+#  than no test, since it reads as coverage.
 
 
 def test_only_v10_7_declares_a_reported_exit_and_only_for_the_breach() -> None:
