@@ -1,9 +1,9 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Four short pieces"}
-{"id": "s02", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Contents"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "1. The weather in March"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "2. A letter never sent"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "3. Two walks"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "4. The last page"}
-{"id": "s07", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "The weather in March"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "It rained for nine days and then it did not."}
+{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "Four short pieces", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Contents", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "1. The weather in March", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "2. A letter never sent", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "3. Two walks", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "4. The last page", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "The weather in March", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "It rained for nine days and then it did not.", "checked": "verified"}

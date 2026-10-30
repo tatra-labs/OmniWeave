@@ -26,3 +26,4 @@ page = 1
 before = "Receipt {2026-114}"
 after = "Paid in full on 20 October 2026."
 slices = ["office/labelled", "office/rtf"]
+checked = "verified"

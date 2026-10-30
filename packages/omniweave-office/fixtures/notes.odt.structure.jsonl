@@ -1,5 +1,5 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Field notes"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Two observations, in order."}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the first"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the second"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Field notes", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Two observations, in order.", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the first", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "the second", "checked": "verified"}

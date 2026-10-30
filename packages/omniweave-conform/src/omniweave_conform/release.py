@@ -60,6 +60,8 @@ from omniweave_core.drivers.card import MIN_SLICE_N
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import perf, run_statuses, scoreboard
 
+from omniweave_conform.rollup import MACRO
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
@@ -138,6 +140,12 @@ _FIX: Final = {
         'verify its structure reference: write checked = "verified" on each .structure.jsonl row '
         "you confirm against its document -- every row of a document, since a part-signed "
         "reference has no precision denominator -- then ow eval run --suite {suite}"
+    ),
+    "thin_slice": (
+        "nothing, unless this slice is meant to carry a floor of its own: it is reported because "
+        "13-quality.md:406 says a slice under min_slice_n never silently drops out of the macro "
+        "mean, and the macro it was left out of computed. Growing it past {n} documents or "
+        "verdicts is the only thing that changes this row"
     ),
     "population": (
         "measure {n} or more a slice: add questions to the suite's corpus, then ow eval run "
@@ -257,6 +265,35 @@ def _subject_flag(suite: str, subject: str) -> str:
     return f" --subject {subject}" if suite == "parse" else ""
 
 
+def _under_min_slice(row: Standing, board: Sequence[Standing]) -> bool:
+    """Whether this UNKNOWN row is a thin slice beside a macro that computed. **D1023.**
+
+    A user ruling of 2026-10-30. Ruling 3 refuses every `UNKNOWN` scoreboard row, and 13:406
+    REQUIRES a slice under `min_slice_n` to carry its own row -- `method = none`, no value -- so
+    that *"it never silently drops out of the macro mean"*. Both held only while no corpus had a
+    fat slice and a thin one at once. D1002's one-coarse-slice-per-family is exactly that shape:
+    `office/labelled` reaches 33 documents and the eleven per-extension keys beside it never will,
+    and `eval/gates.toml` calls those rows *"the honest report rather than a hidden one"*.
+
+    So this is the third declared disclosure, beside `NOT_APPLICABLE` (D987) and
+    `DECLARED_UNKNOWN` (D1017), and it is narrow on purpose:
+
+    * the row is a SLICE row, never `__macro__` -- an unknown headline still refuses;
+    * it is unknown for this reason and no other, which `method = "none"` with `0 < n` says;
+    * and the macro it was excluded from COMPUTED. A metric whose headline is unknown refuses on
+      the headline, and its slices are not separately excused.
+    """
+    if row.slice_key == MACRO or row.method != "none" or not 0 < row.n < MIN_SLICE_N:
+        return False
+    return any(
+        one.run_id == row.run_id
+        and one.metric == row.metric
+        and one.slice_key == MACRO
+        and one.standing != "UNKNOWN"
+        for one in board
+    )
+
+
 def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool) -> Release:
     """Rulings 1-7 over one `.oweval` and the metric register."""
     gates = hard_gates(register)
@@ -289,11 +326,23 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
     board = [row for row in scoreboard(connection) if row.run_id in judged]
     said = {run.run_id: run.not_measured for run in runs}
     unknown_rows = [row for row in board if row.standing == "UNKNOWN"]
+    thin = [row for row in unknown_rows if _under_min_slice(row, board)]
     findings += [
         _unknown(row, said.get(row.run_id, ()))
         for row in unknown_rows
-        if row.metric not in DECLARED_UNKNOWN
+        if row.metric not in DECLARED_UNKNOWN and row not in thin
     ]
+    #  D1023: a thin slice beside a macro that computed is a disclosure, not a gap.
+    disclosed += tuple(
+        Finding(
+            "under-min-slice",
+            f"{row.metric}@{row.slice_key} in {row.suite}/{row.subject} run {row.run_id}",
+            f"UNKNOWN; {row.n} of {MIN_SLICE_N} (13:406), and the macro computed",
+            _FIX["thin_slice"].format(n=MIN_SLICE_N),
+        )
+        for row in thin
+        if row.metric not in DECLARED_UNKNOWN
+    )
     #  D1017: a declared metric's UNKNOWN is a disclosure and not a gap. It keeps the detail the
     #  run computed -- the population and why it is short -- so the report says 0 of 13 rather
     #  than only that something was withheld, and carries the ruling as its fix.

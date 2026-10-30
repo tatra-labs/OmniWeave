@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Memo"
 slices = ["office/rtf"]
+checked = "verified"
 
 [[assertion]]
 id = "title-body"
@@ -21,6 +22,7 @@ page = 1
 before = "Memo"
 after = "Plain text, then italic and bold."
 slices = ["office/labelled", "office/rtf"]
+checked = "verified"
 
 [[assertion]]
 id = "body-order"
@@ -29,3 +31,4 @@ page = 1
 before = "Plain text, then italic and bold."
 after = "A second paragraph."
 slices = ["office/labelled", "office/rtf"]
+checked = "verified"

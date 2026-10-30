@@ -26,3 +26,4 @@ page = 1
 before = "Agenda, 3 November"
 after = "Apologies"
 slices = ["office/labelled", "office/docx"]
+checked = "verified"

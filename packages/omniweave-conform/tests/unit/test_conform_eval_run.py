@@ -38,15 +38,43 @@ REPO = Path(__file__).resolve().parents[4]
 REGISTER: dict[str, Any] = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
 PDFIUM, OFFICE = "parse.pdf.pdfium", "parse.office.anydoc"
 SPAN = "span_exact_rate"
-DRAFTED = (
-    ("metric", "order_acc@__macro__ in parse/parse.office.anydoc"),
-    ("metric", "order_acc@__macro__ in parse/parse.pdf.pdfium"),
-    ("metric", "structure_f1@__macro__ in parse/parse.office.anydoc"),
-    ("metric", "table_rel_acc@__macro__ in parse/parse.office.anydoc"),
-)
-"""D913: the drafted labels' rates, `unknown` until a reviewer verifies 30 in a slice, and each
-one a refusal, run id aside. D982 added `structure_f1` over the office fixtures' drafted
-`structure.jsonl` references: `unknown` for the same reason, one signature short."""
+SIGNED: tuple[tuple[str, str], ...] = ()
+"""**THE REVIEWER HAS SIGNED, AND `release-check` REFUSES NOTHING.** 2026-10-30.
+
+This tuple held four refusals until then -- `order_acc` twice, `structure_f1` and `table_rel_acc`
+-- each one *"unknown until a reviewer verifies 30 in a slice"* (D913, D982). The reviewer verified
+all 178 assertion labels and all 33 structure references, every rate computed, and every one met
+its floor:
+
+    structure_f1  office/labelled             0.9540 over 33   floor 0.90
+    order_acc     office/labelled             1.0000 over 35   floor ungated
+    order_acc     pdf/born_digital/contracts  1.0000 over 60   floor 0.75
+    table_rel_acc office/has_merges=1         1.0000 over 51   floor 0.70
+
+It is kept as an EMPTY tuple rather than deleted, because an empty expectation is the assertion:
+anything that starts refusing again lands here as a diff naming it, where `assert not findings`
+would only say that something did."""
+THIN = tuple(
+    ("under-min-slice", f"{metric}@{key} in parse/parse.office.anydoc")
+    for metric, key in (
+        *(("structure_f1", one) for one in (
+            "office/csv", "office/docx", "office/docx/has_merges=1", "office/epub", "office/odp",
+            "office/ods", "office/ods/has_merges=1", "office/odt", "office/pptx", "office/rtf",
+            "office/xls", "office/xlsx", "office/xlsx/has_merges=1",
+        )),
+        *(("table_rel_acc", one) for one in (
+            "office/csv", "office/docx", "office/ods", "office/xls", "office/xlsx",
+        )),
+    )
+)  # fmt: skip
+"""D1023, a user ruling of 2026-10-30: a slice under `min_slice_n` beside a macro that COMPUTED is
+a disclosure, not a gap.
+
+13:406 requires the thin slice to carry its own row so it never silently drops out of the macro
+mean, and ruling 3 refused every `UNKNOWN` row. Both held until one corpus had a fat slice and
+thin ones at once, which is what D1002's one-coarse-slice-per-family produced: `office/labelled`
+reaches 33 documents, and eleven per-extension keys never will. These eighteen are reported with
+their `n` and refuse nothing."""
 UNDER_MIN = ("declared-unknown", "false_confident_zero@removal in absence/omniweave")
 """D933's ceiling over the catalogue's 13 answerable questions, and since D1017 a DISCLOSURE.
 
@@ -118,7 +146,11 @@ def test_each_subject_is_one_run_over_its_own_tier_a_corpus(parsed: Any) -> None
         (corpus,) = [c for c in batch.corpora if c.corpus_id == run.corpus_id]
         assert corpus.corpus_id == row["fixtures"]
         assert (corpus.tier, corpus.publishable) == ("A", False)
-        assert (corpus.n_assertions, corpus.n_checked) == (_labels(row["fixtures"]), 0)
+        #  n_checked was 0 until the reviewer signed on 2026-10-30; it is now every label.
+        assert (corpus.n_assertions, corpus.n_checked) == (
+            _labels(row["fixtures"]),
+            _labels(row["fixtures"]),
+        )
         assert corpus.n_assertions > 0, "D913 drafted labels for both fixture sets"
         judged = [v for v in batch.verdicts if v.run_id == run.run_id]
         assert len(judged) == corpus.n_assertions
@@ -129,9 +161,15 @@ def test_each_subject_is_one_run_over_its_own_tier_a_corpus(parsed: Any) -> None
         assert (run.witness, run.cassette) == ("self", "off")
         assert run.started_ns < run.ended_ns  # type: ignore[operator]
         assert len(run.code_fingerprint) == 64
-        assert any(note.startswith("structure_f1:") for note in run.not_measured), (
-            "D982: a parse run says what it did not measure about structure_f1"
-        )
+        #  Until 2026-10-30 every parse run carried a `structure_f1:` note saying the references
+        #  were unsigned (D982). The reviewer signed, the office run measures it, and only a
+        #  subject that declares no structure still says so -- `parse.pdf.pdfium`, whose card has
+        #  `sections = "none"` (`structure.inapplicable`).
+        notes = [note for note in run.not_measured if note.startswith("structure_f1:")]
+        if run.subject == PDFIUM:
+            assert notes and "not applicable" in notes[0], notes
+        else:
+            assert not notes, f"office measures structure_f1 now, so it names no gap: {notes}"
         assert run.confounders[0] == "the fixtures are the driver's own, written by its authors"
 
 
@@ -222,23 +260,24 @@ def test_the_batch_writes_and_release_check_wants_the_other_four_gates(
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
+    #  All four rates are WITHHELD and not UNKNOWN since the reviewer signed (2026-10-30): each
+    #  one computed, and a Tier A corpus is `publishable = False`, which is what WITHHELD says.
+    #  An UNKNOWN here would mean a rate stopped computing.
     assert standing == {
         (SPAN, "WITHHELD"),
-        ("order_acc", "UNKNOWN"),
+        ("order_acc", "WITHHELD"),
+        ("structure_f1", "WITHHELD"),
+        ("table_rel_acc", "WITHHELD"),
+        #  The thin per-extension slices (D1023). They are UNKNOWN by 13:406 and disclosed rather
+        #  than refused; `order_acc` has none, because every office order verdict leads with the
+        #  coarse key and every PDF one with `pdf/born_digital/contracts`.
         ("structure_f1", "UNKNOWN"),
         ("table_rel_acc", "UNKNOWN"),
     }
-    drafted = judged.findings[: len(DRAFTED)]
-    rates = [f for f in drafted if "structure_f1" not in f.names]
-    assert all(f.fix.startswith('verify its labels: write checked = "verified"') for f in rates)
-    assert all("unverified assertion(s) ran and were not scored" in f.why for f in rates)
-    #  D982: the structure reference is signed per document, in its own file, so it names its own
-    #  fix and not the assertions file's.
-    (shape,) = [f for f in drafted if "structure_f1" in f.names]
-    assert shape.fix.startswith('verify its structure reference: write checked = "verified"')
-    assert "reference row(s) unsigned" in shape.why
+    #  The thin per-extension slices are disclosed, never refused (D1023), and the only findings
+    #  left in a parse-only batch are the four hard gates the other suites measure.
+    assert all(f.kind == "under-min-slice" for f in judged.disclosed), judged.disclosed
     assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == [
-        *DRAFTED,
         ("unmeasured", "hard gate degradation_detection@*"),
         ("unmeasured", "hard gate citability_violations@*"),
         ("unmeasured", "hard gate address_survival@*"),
@@ -522,13 +561,14 @@ def test_the_entry_point_runs_every_suite_in_one_write(
     finally:
         connection.close()
     assert judged.runs == 10
-    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == list(DRAFTED), (
-        "D913: every suite's hard gate holds, and since D1017 ONLY the drafted labels' unverified "
-        "rates refuse -- a reviewer's signature is the one input between this and exit 0"
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == list(SIGNED), (
+        "the reviewer signed on 2026-10-30, so checklist step 6 refuses NOTHING: every rate "
+        "computed and every floor held. Anything here is a regression naming itself"
     )
-    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.disclosed] == [UNDER_MIN], (
-        "D1017: D933's ceiling over 13 answerable questions is disclosed, not counted"
-    )
+    assert judged.ok, "release-check exits 0"
+    assert sorted((f.kind, f.names.split(" run ")[0]) for f in judged.disclosed) == sorted(
+        [*THIN, UNDER_MIN]
+    ), "D1017's declared unknown and D1023's eighteen thin slices: printed, and refusing nothing"
 
 
 @pytest.mark.parametrize(

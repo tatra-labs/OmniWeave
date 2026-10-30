@@ -1,9 +1,9 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "A very short book"}
-{"id": "s02", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Chapter one"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "A short paragraph with emphasis and a relative link."}
-{"id": "s04", "page": 1, "kind": "code", "layer": "body", "parent_kind": "document", "text": "print(\"hi\")\n"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "blockquote", "text": "Quoted material."}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "alpha"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "beta"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The end."}
+{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "A very short book", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Chapter one", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "A short paragraph with emphasis and a relative link.", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "code", "layer": "body", "parent_kind": "document", "text": "print(\"hi\")\n", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "blockquote", "text": "Quoted material.", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "alpha", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "beta", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The end.", "checked": "verified"}

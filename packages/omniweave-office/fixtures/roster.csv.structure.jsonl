@@ -1,16 +1,16 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "name"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "shift"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Okonkwo"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Monday morning"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 1"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Haraldsen"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Tuesday morning"}
-{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 2"}
-{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Devereux"}
-{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Wednesday afternoon"}
-{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 3"}
-{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Nakamura"}
-{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Thursday afternoon"}
-{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 4"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "name", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "shift", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Okonkwo", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Monday morning", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 1", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Haraldsen", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Tuesday morning", "checked": "verified"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 2", "checked": "verified"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Devereux", "checked": "verified"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Wednesday afternoon", "checked": "verified"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 3", "checked": "verified"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Nakamura", "checked": "verified"}
+{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Thursday afternoon", "checked": "verified"}
+{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "desk 4", "checked": "verified"}

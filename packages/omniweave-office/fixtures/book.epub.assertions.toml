@@ -13,6 +13,7 @@ type = "present"
 page = 1
 text = "Chapter one"
 slices = ["office/epub"]
+checked = "verified"
 
 [[assertion]]
 id = "chapter-para"
@@ -21,6 +22,7 @@ page = 1
 before = "Chapter one"
 after = "A short paragraph with"
 slices = ["office/labelled", "office/epub"]
+checked = "verified"
 
 [[assertion]]
 id = "para-quote"
@@ -29,6 +31,7 @@ page = 1
 before = "A short paragraph with"
 after = "Quoted material."
 slices = ["office/labelled", "office/epub"]
+checked = "verified"
 
 [[assertion]]
 id = "list-order"
@@ -37,6 +40,7 @@ page = 1
 before = "alpha"
 after = "beta"
 slices = ["office/labelled", "office/epub"]
+checked = "verified"
 
 [[assertion]]
 id = "quote-end"
@@ -45,3 +49,4 @@ page = 1
 before = "Quoted material."
 after = "The end."
 slices = ["office/labelled", "office/epub"]
+checked = "verified"

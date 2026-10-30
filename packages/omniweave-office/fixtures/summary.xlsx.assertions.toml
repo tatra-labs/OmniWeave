@@ -28,6 +28,7 @@ page = 1
 cell = "Region"
 right = "Spring"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t02-spring-between"
@@ -37,6 +38,7 @@ cell = "Spring"
 left = "Region"
 right = "Autumn"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t03-year-last"
@@ -45,6 +47,7 @@ page = 1
 cell = "Year"
 left = "Autumn"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t04-region-column"
@@ -53,6 +56,7 @@ page = 1
 cell = "Region"
 down = "Northern"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t05-northern-row"
@@ -62,6 +66,7 @@ cell = "Northern"
 right = "120"
 top_heading = "Region"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t06-spring-northern"
@@ -71,6 +76,7 @@ cell = "120"
 up = "Spring"
 left = "Northern"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t07-autumn-northern"
@@ -80,6 +86,7 @@ cell = "140"
 right = "260"
 top_heading = "Autumn"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t08-southern-between"
@@ -89,6 +96,7 @@ cell = "Southern"
 up = "Northern"
 down = "Eastern"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t09-autumn-southern"
@@ -98,6 +106,7 @@ cell = "110"
 up = "140"
 right = "200"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "t10-year-eastern"
@@ -112,6 +121,7 @@ slices = ["office/has_merges=1"]
 # `cells` ruling 2: a neighbour is asked from the EDGE of the cell the relation faces, so `right`
 # of a span-2 origin is asked from its last column. These are the rows a text rendering cannot
 # answer and a Grid can.
+checked = "verified"
 
 [[assertion]]
 id = "c01-merged-origin"
@@ -121,6 +131,7 @@ cell = "Every region"
 up = "Eastern"
 right = "610"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c02-merged-total"
@@ -130,6 +141,7 @@ cell = "610"
 left = "Every region"
 up = "80"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c03-merged-heading"
@@ -138,6 +150,7 @@ page = 1
 cell = "Every region"
 top_heading = "Region"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c04-total-heading"
@@ -146,6 +159,7 @@ page = 1
 cell = "610"
 top_heading = "Autumn"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c05-eastern-down"
@@ -154,6 +168,7 @@ page = 1
 cell = "Eastern"
 down = "Every region"
 slices = ["office/has_merges=1"]
+checked = "verified"
 
 [[assertion]]
 id = "c06-autumn-down"
@@ -162,3 +177,4 @@ page = 1
 cell = "80"
 down = "610"
 slices = ["office/has_merges=1"]
+checked = "verified"

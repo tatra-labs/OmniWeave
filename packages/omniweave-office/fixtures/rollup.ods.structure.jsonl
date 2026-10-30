@@ -1,19 +1,19 @@
 {"schema": "omniweave.structure/1"}
-{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Branch"}
-{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Opened"}
-{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Closed"}
-{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Net"}
-{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour"}
-{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "31"}
-{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "12"}
-{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "19"}
-{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Uplands"}
-{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "24"}
-{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "9"}
-{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "15"}
-{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Riverside"}
-{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "18"}
-{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "4"}
-{"id": "s16", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "14"}
-{"id": "s17", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "All branches"}
-{"id": "s18", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "48"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Branch", "checked": "verified"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Opened", "checked": "verified"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Closed", "checked": "verified"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Net", "checked": "verified"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Harbour", "checked": "verified"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "31", "checked": "verified"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "12", "checked": "verified"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "19", "checked": "verified"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Uplands", "checked": "verified"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "24", "checked": "verified"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "9", "checked": "verified"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "15", "checked": "verified"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Riverside", "checked": "verified"}
+{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "18", "checked": "verified"}
+{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "4", "checked": "verified"}
+{"id": "s16", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "14", "checked": "verified"}
+{"id": "s17", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "All branches", "checked": "verified"}
+{"id": "s18", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "48", "checked": "verified"}
