@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D1018, a user ruling of 2026-10-29: the sidecar key is [fixture] imaging = scan | born_digital, required under fixtures/docs/ and optional elsewhere, and Q-G2's 40% scan floor counts it. Recorded as a build note on 13:606's existing line -- the line whose own text said the clause fails closed until a sidecar key says what a scan is -- because code cites this document by line (13:1022, 13:1088, 13:1262) and inserting the key into section 4.4's printed sidecar would move all three. 2124 lines held.
+# blessed-because: D1026, and it is a build note rather than a change of law: release.yml's build job ran pass 1 and stopped behind a tripwire that exited 1 the day tools/gen_first_party.py landed, so the v1.0.0 tag took build (28 subjects) red and provenance skipped -- no provenance.intoto.jsonl, and nothing for docs/verify.md's recipes 1 and 2 to verify. Section 7.3's four commands are now written where the tripwire stood. Recorded on D895's existing line at 11:1907, the line that already describes the same four commands in ci.yml, because code cites this document by line and inserting one would move every citation below it. 2697 lines held.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -36,7 +36,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
-documents-frozen  1f3db693432f2c8aab0a1a12a08682f69fab785634fb251724250bb6cab00202  11-repo-layout.md
+documents-frozen  23b93072c394c8ac24d5d54f294cc09c692cb93e60cc09dd1b7d79606ea20ad9  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  b755fa79199d11bbf0335c007cffc8e0c21935483d852f5f184a6757f2756008  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md

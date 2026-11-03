@@ -979,6 +979,53 @@ def test_publish_is_the_only_job_behind_the_approval_pause(release: Workflow) ->
     assert publish.count("pypa/gh-action-pypi-publish@") == 4, publish.count("pypa/")
 
 
+#  Section 7.2's step 2, as the two files spell it. `ci.yml` takes the script's default RELEASE
+#  (its ruling 4, `omniweave-core`'s own version); `release.yml` passes the tag's, which is the one
+#  place the two spellings could disagree. So the shared claim is the SEQUENCE, matched command by
+#  command, and the `--release` argument is asserted separately where it exists.
+_GEN_FIRST_PARTY = re.compile(r"tools/gen_first_party\.py --dist dist(?P<rest>.*)$", re.MULTILINE)
+
+
+def test_both_build_jobs_run_section_7_3s_four_command_first_party_block(
+    ci: Workflow, release: Workflow
+) -> None:
+    """Section 7.2's two passes, in BOTH files, because only one of them publishes.
+
+    The defect this is the test for is one that shipped. `release.yml`'s build step ran pass 1 and
+    stopped, behind a tripwire that exited 1 the day `tools/gen_first_party.py` landed -- and it
+    landed at D895, `v1.0.0` was tagged, `build (28 subjects)` went red and `provenance` was
+    skipped. So the tag carries no `provenance.intoto.jsonl` and docs/verify.md's recipes 1 and 2
+    have nothing to verify against. D1026 wrote the block the tripwire named. Nothing in this file
+    could see it: every tripwire assertion here reads `ci.yml`, and this one was in `release.yml`.
+
+    The worse failure is the one that did not happen, and it is what this guards from here on: the
+    block missing while the job still SUCCEEDS. Then 28 files are attested and published whose
+    `omniweave-core` wheel carries no `first_party.toml`, section 7.2's point -- that the loader
+    can recompute every first-party digest -- is quietly false on every machine that installs the
+    release, and the file count is 28 either way, so no other check in either file notices.
+    """
+    for file, body in (
+        ("ci.yml", ci.run_bodies("build")),
+        ("release.yml", release.run_bodies("build")),
+    ):
+        calls = _GEN_FIRST_PARTY.findall(body)
+        assert len(calls) == 2, f"{file}: {len(calls)} gen_first_party.py call(s), not write+check"
+        assert not calls[0].endswith("--check"), f"{file}: the first call must WRITE the manifest"
+        assert calls[1].endswith("--check"), f"{file}: the second must re-check it against dist/"
+        assert "rm dist/omniweave_core-" in body, f"{file}: core's pass-one files are not removed"
+        assert "uv build --package omniweave-core" in body, f"{file}: core is not rebuilt alone"
+        assert "omniweave_core/drivers/first_party.toml" in body, (
+            f"{file}: nothing asserts core's rebuilt wheel carries the manifest"
+        )
+    #  The tripwire is spent, not loosened. `release.yml` quotes it in the comment where it stood,
+    #  and `run_bodies` drops comments, so this reads the shell and not the prose about it.
+    build = release.run_bodies("build")
+    assert "[ -f tools/gen_first_party.py ]" not in build, "the spent tripwire is back"
+    #  `release.yml` alone reconciles the tag with the manifest: `$RELEASE` is tag-guard's output,
+    #  and a release whose manifest named a different version would be a release nobody can check.
+    assert build.count('--release "$RELEASE"') == 2, build.count("--release")
+
+
 # ---------------------------------------------------------------------------
 # 16-roadmap.md section 4 and :340 -- the matrix, and the phase that landed each axis value
 # ---------------------------------------------------------------------------

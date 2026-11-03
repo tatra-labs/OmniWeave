@@ -54,12 +54,14 @@
 #     commands and its absence is what checklist step 12 fails on.
 #
 # CONSEQUENCE, STATED PLAINLY: THE PUBLISH HALF OF THIS FILE CANNOT COMPLETE A RELEASE. The
-# sbom-sign job exits 1 at the SBOM generation step and says why, and the build job exits 1 the day
-# gen_first_party.py lands without section 7.3's four-command block being wired. Both are
-# deliberate. The alternative is a release workflow that signs a nonexistent SBOM or publishes
-# wheels whose first-party manifest names nothing, and section 6.8 refuses a check that cannot
-# fail. 16-roadmap.md W10.9 ("Release engineering: release.yml with OIDC trusted publishing ...")
-# is the item that turns these into commands, and it is not built.
+# sbom-sign job exits 1 at the SBOM generation step and says why. The build job USED to exit 1 the
+# day gen_first_party.py landed without section 7.3's four-command block being wired, and that is
+# the half of this paragraph D1026 spent: the script landed at D895, the tripwire fired on the
+# v1.0.0 tag, and the block is now written where it stood. Both were deliberate. The alternative
+# is a release workflow that signs a nonexistent SBOM or publishes wheels whose first-party
+# manifest names nothing, and section 6.8 refuses a check that cannot fail. 16-roadmap.md W10.9
+# ("Release engineering: release.yml with OIDC trusted publishing ...") is the item that turns the
+# rest of these into commands, and it is not built.
 #
 # WHAT A v* TAG DOES AT v1.0 (D1016, a user ruling of 2026-10-29). v1.0 is a GitHub release and
 # publishes nothing to PyPI, so the publish half is GATED OFF rather than left to fail: `sbom-sign`
@@ -199,10 +201,21 @@ jobs:
         # disappear, or a mutable upstream tag -- because all three make a re-run after a five-day
         # gap produce a different byte. The commit date is the only epoch that survives the pause.
         #
-        # gen_first_party.py does not exist yet (section 7.2, tools/gates.toml runner_planned), so
-        # the middle two commands section 7.3 prints are not run and core is not rebuilt. The step
-        # FAILS the day the script lands, because landing it changes what the digests are and
-        # therefore what the SLSA subjects are -- that is not a change to make silently on a tag.
+        # SECTION 7.3'S FOUR COMMANDS, WIRED -- D1026, and the tripwire that stood here is spent.
+        # It read `if [ -f tools/gen_first_party.py ]: exit 1` and said why: the script had not
+        # landed, so the middle two commands were not run, core was not rebuilt, and landing the
+        # script changes what the digests are and therefore what the SLSA subjects are. D895
+        # landed it, v1.0.0 was tagged, and this job failed on the tag: `build (28 subjects)`
+        # red, `provenance` skipped, no provenance.intoto.jsonl, and so nothing for
+        # docs/verify.md's recipes 1 and 2 to verify against. A tripwire is supposed to end this
+        # way -- it fired, the thing it watched for arrived, and the step it names is now written.
+        #
+        # What the four commands do (section 7.2): pass 1 builds all 28 files, gen_first_party.py
+        # reads the 26 non-core ones and writes thirteen rows into core's src/, core ALONE is
+        # rebuilt so its two artefacts carry the manifest, and --check compares the written
+        # manifest with dist/ again. ci.yml's build job runs the same four with section 6.6 step
+        # 3's two-pass reproducibility diff around them; the diff is not repeated here because
+        # `needs: [ci]` means it has already run on this very commit.
         run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
@@ -210,16 +223,26 @@ jobs:
           # An attachment (D909) is separately released: none of the 28. check_build.py --prune
           # reads only the standard library, so no project environment is synced for it.
           uv run --no-project tools/check_build.py --prune dist
-          if [ -f tools/gen_first_party.py ]
+          # gen_first_party.py imports omniweave_core, so unlike check_build.py it needs the
+          # workspace -- and --frozen for the same reason the epoch comes from the commit: a
+          # re-run after the approval pause must resolve the lockfile and not the index.
+          uv sync --frozen --all-packages
+          # --release "$RELEASE" and not the script's default of core's own version (its ruling
+          # 4), because on a tag the two must AGREE and a default cannot disagree with itself.
+          uv run --frozen tools/gen_first_party.py --dist dist --release "$RELEASE"
+          rm dist/omniweave_core-*
+          uv build --package omniweave-core --out-dir dist
+          uv run --frozen tools/gen_first_party.py --dist dist --release "$RELEASE" --check
+          carried="omniweave_core/drivers/first_party.toml"
+          if ! unzip -l dist/omniweave_core-*.whl | grep -q "$carried"
           then
-            echo "tools/gen_first_party.py exists: wire section 7.3's four-command build block"
-            echo "  python tools/gen_first_party.py --dist dist/ --release \"\$RELEASE\""
-            echo "  rm dist/omniweave_core-* dist/omniweave-core-*"
-            echo "  SOURCE_DATE_EPOCH=... uv build --package omniweave-core"
+            echo "release FAILED: core's rebuilt wheel carries no first-party manifest"
             exit 1
           fi
           # -name "omniweave*" because "uv build --out-dir dist" also writes a dist/.gitignore
           # holding "*", so a bare file count is 29. Measured on this checkout, uv 0.9.x.
+          # Counted AFTER the rebuild: `rm` takes core's two files out and the rebuild puts two
+          # back, so a 28 here is also the assertion that it put back what it removed.
           count="$(find dist -maxdepth 1 -type f -name "omniweave*" | wc -l)"
           if [ "$count" != "28" ]
           then
