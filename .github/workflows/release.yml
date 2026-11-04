@@ -68,8 +68,11 @@
 # and `publish` carry `if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'`, an unset repository variable,
 # so a tag runs tag-guard -> ci -> build -> provenance and stops. Those four are the ones that
 # work, and the GitHub release is cut from their artefacts: 28 reproducible files from `build` and
-# `provenance.intoto.jsonl` from the SLSA generator, which is what docs/verify.md's recipes 1 and 2
-# verify.
+# `provenance.intoto.jsonl` from the SLSA generator, which is what docs/verify.md's RECIPE 2
+# verifies -- and recipe 2 alone. Recipe 1 is not satisfied by this (D1027): `gh attestation
+# verify` reads GitHub's attestation store, and the only step that writes it is
+# `actions/attest-build-provenance`, which sits in the gated-off `publish` job below. So a v1.0 tag
+# has SLSA provenance and NO GitHub build attestation, and those are not substitutes.
 #
 # TWO CONSEQUENCES WORTH STATING. First, the `release` environment is NO LONGER NEEDED FOR v1.0:
 # an environment is per-job and `publish` is the only job that declares one, so a skipped `publish`

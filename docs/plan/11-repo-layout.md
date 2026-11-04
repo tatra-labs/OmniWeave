@@ -1782,7 +1782,7 @@ Two honest limits. `uvx` resolves from PyPI at job time, so a `gates` run is not
 a deleted or yanked tool version — acceptable for a gate tool, which fails loudly and blocks nothing
 but the PR, and unacceptable for a runtime dependency, which is why the split exists at all. And
 `zizmor` is the workflow people forget: the CI definition is itself an attack surface with write
-access to the release, and local-deep-research runs `zizmor-security.yml` for exactly that reason.
+access to the release, and local-deep-research runs `zizmor-security.yml` for exactly that reason. *(Correction, D1027: the `slsa-verifier` row's CHANNEL is wrong and was never runnable. There is no `slsa-verifier` on PyPI under that name or any nearby one -- 404 for `slsa-verifier`, `slsa-verifier-bin`, `pyslsa` and `slsa`, measured 2026-11-04 -- so `uvx` cannot resolve it. It is a Go binary, distributed as a per-platform release asset, by `go install`, or by Homebrew, and `docs/verify.md`'s recipe 2 now gives all three with v2.7.1 pinned. Why no gate caught it: `gates.workflow_tools_pinned` reads the two workflow files, and NEITHER workflow runs `slsa-verifier` -- checklist step 15 is a human run from a clean machine, so the row describes a channel no `run:` step ever exercises. The claim was rehearsed for the first time at the v1.0.0 tag and failed on its first command.)*
 
 ### 6.8 What is deliberately not a gate
 
@@ -2074,7 +2074,7 @@ impose, arriving from a second direction.
 
 ### 7.5 What a consumer can verify, and what they cannot
 
-`docs/verify.md` carries four recipes and one paragraph of honesty.
+`docs/verify.md` carries four recipes and one paragraph of honesty. *(Correction, D1027: recipe 1 does NOT work at v1.0, which `docs/verify.md` asserted the opposite of until this ruling. `gh attestation verify` reads GitHub's attestation store, and the only step that writes it is `actions/attest-build-provenance` -- which sits in `release.yml`'s `publish` job, gated off by D1016. So a v1.0 tag has SLSA provenance and no GitHub build attestation, recipe 1 answers `no attestations found`, and holding one statement is not holding the other. Of the four recipes exactly ONE applies at v1.0: recipe 2. Recipe 3 needs `sbom-sign`'s blobs and recipe 4 its signed first-party asset, both from the same skipped job. Verified by hand at the tag instead: the statement names `generator_generic_slsa3.yml` as `builder.id` and the tag as `configSource`, and its 28 subject digests match the 28 built files in both directions -- which checks the subjects and NOT the DSSE signature, since checking that signature is what recipe 2 is for.)*
 
 ```bash
 # 1. a wheel's build provenance (GitHub attestation)
@@ -2110,7 +2110,7 @@ system](04-driver-system.md) §5.5). The documentation says so rather than imply
 ### 7.6 The release checklist
 
 Ordered, and each step names the thing that fails if it is skipped. Step 0 runs once, before the
-first release, and never again.
+first release, and never again. *(Finding, D1027: NOTHING in this checklist or in `release.yml` CREATES the GitHub release object, and after the v1.0.0 tag ran green the repository had zero releases -- measured 2026-11-04, `gh api .../releases` returns an empty list. The header of `release.yml` says *the GitHub release is cut from their artefacts*, and that is true of a person at step 19, not of any job: the provenance generator is called with `upload-assets: false` and the `publish` job only does PyPI Trusted Publishing and the build attestation. So step 19 is where the release object is cut, by hand, with the `build` artefact's 28 files and `provenance.intoto.jsonl` attached -- and it is TIME-BOXED, because those are workflow artefacts with a retention window (section 7.4). For v1.0.0: provenance expires 2026-11-09 and dist 2026-11-11. Past that the recovery is section 7.4's -- re-run the whole release from the same tag, which is safe only because build.reproducible holds.)*
 
 | # | step | fails otherwise |
 |---|---|---|
