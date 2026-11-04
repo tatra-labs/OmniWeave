@@ -130,7 +130,7 @@ def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Pa
     }
     assert len(prepared) == 3
     lines: list[str] = []
-    graded, failures = anyio.run(
+    graded, failures, _owed = anyio.run(
         lambda: run.run_all(
             runnable,
             [h.Arm.OMNIWEAVE, h.Arm.CONTROL],
@@ -175,7 +175,7 @@ def test_a_task_that_fails_is_recorded_and_fails_the_run_without_stopping_the_re
             raise run.CassetteMissError("OW-Q-004 cassette miss for agent key x")
         return oracle(request)
 
-    graded, failures = anyio.run(
+    graded, failures, _owed = anyio.run(
         lambda: run.run_all(
             runnable, [h.Arm.CONTROL], prepared, turn=flaky, settings=SETTINGS, workers=2
         )
@@ -248,6 +248,156 @@ def test_prepare_only_needs_no_recording_and_no_key(
     assert built == ["personal_archive/full"]
 
 
+def test_a_declared_owed_recording_is_held_and_does_not_fail_the_run(tmp_path: Path) -> None:
+    """D1029. `home-cite-flood` is one of the four `OWED_RECORDINGS` rows.
+
+    What this replaces: four red FAILED lines every night for a gap CHANGELOG.md's known
+    limitations already declare. A declared gap spelled as a break teaches a reader to read the
+    nightly's colour as noise, which is the one thing a nightly cannot afford.
+    """
+    assert "home-cite-flood" in run.owed_for("anthropic/claude-sonnet-5")
+    runnable, _ = run.partition(run.select(CATALOG, "home-cite-flood"))
+    prepared = {"personal_archive": _prepared(tmp_path, "personal_archive")}
+
+    def always_missing(_request: ModelRequest) -> Turn:
+        raise run.CassetteMissError("OW-Q-004 cassette miss for agent key x")
+
+    lines: list[str] = []
+    graded, failures, owed = anyio.run(
+        lambda: run.run_all(
+            runnable,
+            [h.Arm.CONTROL],
+            prepared,
+            turn=always_missing,
+            settings=SETTINGS,
+            workers=1,
+            model_key="anthropic/claude-sonnet-5",
+            log=lines.append,
+        )
+    )
+
+    assert failures == [], "a declared gap is not a failure"
+    assert graded == []
+    assert [u.task_id for u in owed] == ["home-cite-flood"]
+    assert "recordings were orphaned" in owed[0].reason
+    assert any(line.lstrip().startswith("OWED") for line in lines), lines
+    config = ac.resolve(env={"OW_BENCH_ARMS": "control"})
+    report_lines, passed, result = run.summarize(config, graded, failures, tuple(owed), {})
+    assert passed is True, report_lines
+    assert any(line.startswith("UNMEASURED  home-cite-flood") for line in report_lines)
+    assert [u["task"] for u in result["unmeasured"]] == ["home-cite-flood"]
+
+
+def test_a_declared_task_that_fails_for_any_other_reason_is_still_a_failure(
+    tmp_path: Path,
+) -> None:
+    """What is declared is the ABSENCE OF ITS RECORDINGS and nothing else. A declared task that
+    times out, or whose server dies, is a break like any other -- and a row in a register is
+    exactly the kind of thing that quietly grows into a blanket exemption if it is not held to
+    the one error it was written for."""
+    runnable, _ = run.partition(run.select(CATALOG, "home-cite-flood"))
+    prepared = {"personal_archive": _prepared(tmp_path, "personal_archive")}
+
+    def broken(_request: ModelRequest) -> Turn:
+        msg = "the provider hung up"
+        raise OSError(msg)
+
+    _graded, failures, owed = anyio.run(
+        lambda: run.run_all(
+            runnable,
+            [h.Arm.CONTROL],
+            prepared,
+            turn=broken,
+            settings=SETTINGS,
+            workers=1,
+            model_key="anthropic/claude-sonnet-5",
+        )
+    )
+
+    assert owed == [], "an OSError is not a missing recording"
+    assert [f.task_id for f in failures] == ["home-cite-flood"]
+    assert "hung up" in failures[0].message
+
+
+def test_the_owed_declaration_is_checked_the_other_way_too() -> None:
+    """A declared gap that is filled is a stale declaration, not a pass.
+
+    Both guards in `stale_declarations` are the evidence and not caution, so both are driven:
+    under `allow` the task would be graded whether or not a recording existed, and with nothing
+    replayed the store was never read. Only a `required` run that replayed can tell the two apart.
+    """
+    ids = {"home-cite-flood", "data-ret-series-b"}
+    required = {
+        "model_key": "anthropic/claude-sonnet-5",
+        "mode": run.CassetteMode.REQUIRED,
+        "replayed": 7,
+    }
+    (one,) = run.stale_declarations(ids, (), **required)
+    assert one.task_id == "home-cite-flood", "an undeclared task is not asked about"
+    assert "drop the model key from its row" in one.message
+    assert "anthropic/claude-sonnet-5" in one.message, "the message names the model set"
+    #  The case the real replay found. The control arm grades the task from recordings of its own
+    #  while the omniweave arm misses, so the id is graded AND held, and a gap that is held is
+    #  not a gap that is filled. Without the subtraction all four tasks read UNMEASURED and
+    #  FAILED at once.
+    assert run.stale_declarations(ids, {"home-cite-flood"}, **required) == []
+    allow = {
+        "model_key": "anthropic/claude-sonnet-5",
+        "mode": run.CassetteMode.ALLOW,
+        "replayed": 7,
+    }
+    cold = {
+        "model_key": "anthropic/claude-sonnet-5",
+        "mode": run.CassetteMode.REQUIRED,
+        "replayed": 0,
+    }
+    assert run.stale_declarations(ids, (), **allow) == []
+    assert run.stale_declarations(ids, (), **cold) == []
+
+
+def test_the_declaration_is_per_model_set_because_the_gap_is() -> None:
+    """D1029, and the finding that keyed this register by model set rather than by task.
+
+    D972 deleted fifteen orphaned recordings. Fifteen does not cover all twelve (task, model set)
+    pairs: under `openai/qwen3:4b`, `legal-cite-liability-cap` REPLAYS on every arm. The first
+    version of this register declared the four tasks outright, and the real sweep's third replay
+    reported that pair as a stale declaration -- which is the other direction doing exactly its
+    job, on a case no amount of reading the code would have produced.
+
+    Declared per task, that one working pair would have been excused for ever, and the day its
+    recordings broke the nightly would have stayed green.
+    """
+    qwen, sonnet = "openai/qwen3:4b", "anthropic/claude-sonnet-5"
+    assert "legal-cite-liability-cap" not in run.owed_for(qwen), "it replays under qwen3:4b"
+    assert "legal-cite-liability-cap" in run.owed_for(sonnet)
+    assert run.owed_for(qwen) == {
+        "legal-cite-termination",
+        "data-cite-nda-term",
+        "home-cite-flood",
+    }
+    assert len(run.owed_for(sonnet)) == 4
+    assert len(run.owed_for("openai/gpt-5-mini")) == 4
+    #  Eleven of twelve pairs, counted the other way round, so a row silently losing a model key
+    #  moves this number.
+    assert sum(len(models) for models in run.OWED_RECORDINGS.values()) == 11
+    assert run.owed_for("openai/some-model-nobody-replays") == frozenset(), (
+        "a model set with no declaration declares nothing"
+    )
+
+
+def test_every_owed_row_names_a_task_the_catalogue_actually_has() -> None:
+    """The register, checked against the catalogue. A row naming no task excuses nothing and
+    reads as though it does, which is the failure mode of every exemption list."""
+    known = {task.id for task in CATALOG.tasks}
+    unknown = sorted(set(run.OWED_RECORDINGS) - known)
+    assert not unknown, f"OWED_RECORDINGS names {unknown}, which bench/serve/tasks.toml does not"
+    classes = {task.id: task.task_class.value for task in CATALOG.tasks}
+    assert {classes[one] for one in run.OWED_RECORDINGS} == {"citation"}, (
+        "CHANGELOG.md declares four CITATION tasks; a row of another class is a different gap"
+    )
+    assert len(run.OWED_RECORDINGS) == 4, "CHANGELOG.md's known limitations say four"
+
+
 def test_usage_adds_the_keys_a_run_hit_or_recorded_to_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -259,8 +409,8 @@ def test_usage_adds_the_keys_a_run_hit_or_recorded_to_the_file(
     started = run.Started(ac.resolve(flags={}), CATALOG, (), (), cassette, None, {})
     monkeypatch.setattr(run, "_start", lambda _args, _emit: started)
 
-    async def nothing(*_args: object, **_kwargs: object) -> tuple[list[Any], list[Any]]:
-        return [], []
+    async def nothing(*_args: object, **_kwargs: object) -> tuple[list[Any], list[Any], list[Any]]:
+        return [], [], []
 
     monkeypatch.setattr(run, "run_all", nothing)
     usage = tmp_path / "eval" / "cassette-usage.toml"

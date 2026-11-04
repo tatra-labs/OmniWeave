@@ -32,7 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,19 +68,70 @@ from serve_harness import (
 )
 
 __all__ = [
+    "OWED_RECORDINGS",
     "Failure",
     "Graded",
     "Unmeasured",
     "corpus_key",
     "main",
+    "owed_for",
     "partition",
     "run_all",
     "select",
+    "stale_declarations",
     "summarize",
 ]
 
 HERE: Final[Path] = Path(__file__).resolve().parent
 TASKS_TOML: Final[Path] = HERE / "tasks.toml"
+
+
+_OWED_WHY: Final[str] = (
+    "its recordings were orphaned by a retrieval change and are owed; re-recording needs three "
+    "providers and a billed call per turn (CHANGELOG.md, known limitations)"
+)
+
+_ALL_THREE: Final[frozenset[str]] = frozenset(
+    {"anthropic/claude-sonnet-5", "openai/gpt-5-mini", "openai/qwen3:4b"}
+)
+
+OWED_RECORDINGS: Final[Mapping[str, frozenset[str]]] = {
+    "legal-cite-termination": _ALL_THREE,
+    "legal-cite-liability-cap": _ALL_THREE - {"openai/qwen3:4b"},
+    "data-cite-nda-term": _ALL_THREE,
+    "home-cite-flood": _ALL_THREE,
+}
+"""The tasks whose recordings a retrieval change orphaned, each with the reason. **D1029.**
+
+CHANGELOG.md's known limitations already declare these four -- *"Four citation tasks need
+re-recording after a retrieval change, and their replay fails until then"* -- and until D1029 the
+nightly reported them as four FAILED lines. That is the one shape a declared limitation must not
+take: a red nightly says the build broke, and section 6.8's rule is that a check which cannot
+fail is the thing that rots, not that a known gap must be spelled as a break. The house already
+has the spelling for this, and it is the one UNMEASURED uses.
+
+Re-recording them needs an Anthropic key, an OpenAI key and a local Ollama for `qwen3:4b`, which
+is three providers and real money against an offline-by-default direction, so the recordings are
+OWED rather than scheduled. Checked in BOTH directions by `summarize`: the day a recording for one
+of these replays under `cassette = required`, the declaration is the stale thing and the run fails
+asking for it to be removed.
+
+Keyed by MODEL SET and not by task, because the gap is not the same on all three. D972 deleted
+fifteen orphaned recordings, and fifteen does not cover all twelve (task, model set) pairs: eleven
+are owed and `legal-cite-liability-cap` under `openai/qwen3:4b` is not -- it replays on every arm.
+Declaring that task outright would have excused a future break for the one pair that works, and
+nothing would have said so. The other direction found it on the real sweep rather than in review,
+which is the argument for holding a declaration in both directions and not only for writing it.
+
+Not to be confused with `Catalog.missing()`, which is the other OWED line: that one is tasks the
+CATALOGUE lacks (the scanned slice), and this one is tasks the catalogue has and the cassette store
+does not.
+"""
+
+
+def owed_for(model_key: str) -> frozenset[str]:
+    """The task ids whose recordings are owed under `model_key`. **D1029.**"""
+    return frozenset(task_id for task_id, models in OWED_RECORDINGS.items() if model_key in models)
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,12 +217,22 @@ async def run_all(
     turn: TurnFn,
     settings: LoopSettings,
     workers: int,
+    model_key: str = "",
     server_factory: ServerFactory = default_server,
     log: Callable[[str], None] = lambda _line: None,
-) -> tuple[list[Graded], list[Failure]]:
-    """Every task on every arm, `workers` at a time. A failed task is recorded, never fatal."""
+) -> tuple[list[Graded], list[Failure], list[Unmeasured]]:
+    """Every task on every arm, `workers` at a time. A failed task is recorded, never fatal.
+
+    The third return is `OWED_RECORDINGS`' misses (D1029), held rather than failed. Only a
+    `CassetteMissError` qualifies: a declared task that fails for any OTHER reason is a failure
+    like any other, because what is declared is the absence of its recordings and nothing else.
+    And only for `model_key`'s own model set, since the gap differs between the three; the default
+    `""` declares nothing, which is what a caller that is not replaying a committed set wants.
+    """
     graded: list[Graded] = []
     failures: list[Failure] = []
+    held: dict[str, Unmeasured] = {}
+    owed_here = owed_for(model_key)
     limiter = anyio.CapacityLimiter(workers)
     indexed = {key: one.indexed() for key, one in prepared.items()}
 
@@ -191,6 +252,12 @@ async def run_all(
                         settings=settings,
                     )  # fmt: skip
             except (CassetteMissError, ModelError, OSError, RuntimeError) as exc:
+                if task.id in owed_here and isinstance(exc, CassetteMissError):
+                    #  Keyed by task id, not by (task, arm): both arms replay the same store, and
+                    #  one declared gap is one held task however many arms meet it.
+                    held[task.id] = Unmeasured(task.id, _OWED_WHY)
+                    log(f"  OWED      {arm.value:9} {task.id}: {_OWED_WHY}")
+                    return
                 failures.append(Failure(task.id, arm, str(exc)))
                 log(f"  FAILED    {arm.value:9} {task.id}: {str(exc)[:160]}")
                 return
@@ -204,7 +271,49 @@ async def run_all(
                 group.start_soon(one, task, arm)
     order = {task.id: index for index, task in enumerate(tasks)}
     graded.sort(key=lambda g: (order[g.task.id], g.outcome.arm.value))
-    return graded, failures
+    return graded, failures, [held[task_id] for task_id in sorted(held)]
+
+
+def stale_declarations(
+    graded_ids: Collection[str],
+    held_ids: Collection[str],
+    *,
+    model_key: str,
+    mode: CassetteMode,
+    replayed: int,
+) -> list[Failure]:
+    """`OWED_RECORDINGS` checked the OTHER way: a declared gap that is filled. **D1029.**
+
+    A task whose recordings are declared owed and which came back graded with NOTHING held has
+    recordings, so the declaration is the stale thing and not a pass.
+
+    `held_ids` is why this takes two arguments, and the first reading of it did not. Both arms run
+    every task; the control arm asks no omniweave tool, so its conversation is a different one
+    with recordings of its own, and it grades while the omniweave arm misses. A declared task is
+    therefore in `graded` and in `held` AT ONCE, and subtracting the second is what makes this a
+    question about a filled gap rather than about a partly-filled one. The real replay reported
+    all four tasks as UNMEASURED and FAILED together until it did.
+
+    The two guards are evidence, not caution. Under `allow` or `off` a task records or calls live
+    and is graded whether or not a recording exists, so grading says nothing; and with `replayed`
+    at zero nothing was read out of the store at all, which is what a run driven by a fake `turn`
+    looks like. Only a `required` run that actually replayed can tell a filled gap from an empty
+    store.
+    """
+    if mode is not CassetteMode.REQUIRED or replayed == 0:
+        return []
+    filled = (set(graded_ids) - set(held_ids)) & owed_for(model_key)
+    return [
+        Failure(
+            task_id,
+            Arm.OMNIWEAVE,
+            f"{task_id} replayed on every arm under {model_key}, and OWED_RECORDINGS still "
+            "declares its recordings owed for that model set; drop the model key from its row "
+            "(bench/serve/run.py) -- a declared gap that is filled is a stale declaration, not a "
+            "pass",
+        )
+        for task_id in sorted(filled)
+    ]
 
 
 def summarize(
@@ -436,7 +545,7 @@ def main(argv: Sequence[str] | None = None, *, out: Callable[[str], None] = _emi
     config, cassette = started.config, started.cassette
     live = started.client.complete if started.client is not None else None
     settings = LoopSettings(config.model, config.temperature, config.max_tokens, config.tool_budget)
-    graded, failures = anyio.run(
+    graded, failures, owed_held = anyio.run(
         lambda: run_all(
             started.runnable,
             [Arm(one) for one in config.arms],
@@ -444,11 +553,25 @@ def main(argv: Sequence[str] | None = None, *, out: Callable[[str], None] = _emi
             turn=lambda request: cassette.turn(request, model_key=config.model_key, live=live),
             settings=settings,
             workers=config.workers,
+            model_key=config.model_key,
             log=out,
         )
     )
     lines, passed, result = summarize(
-        config, graded, failures, started.unmeasured, started.catalog.missing()
+        config,
+        graded,
+        [
+            *failures,
+            *stale_declarations(
+                {g.task.id for g in graded},
+                {u.task_id for u in owed_held},
+                model_key=config.model_key,
+                mode=cassette.mode,
+                replayed=len(cassette.hits),
+            ),
+        ],
+        (*started.unmeasured, *owed_held),
+        started.catalog.missing(),
     )
     result["cassette_ledger"] = {
         "hits": len(cassette.hits),

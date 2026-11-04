@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D1027: three corrections appended to 11-repo-layout.md, all to existing lines, 2697 lines held. 6.7's slsa-verifier row names a channel that cannot work (no such distribution on PyPI; it is a Go binary), 7.5's recipe 1 does not apply at v1.0 (gh attestation verify needs the attest step that sits in the gated-off publish job), and 7.6 now records that NO job cuts the GitHub release object -- the repository had zero releases after the green v1.0.0 run, and the build artefacts the release must be cut from expire 2026-11-09 and 2026-11-11.
+# blessed-because: D1029: one note appended to 13-quality.md's existing D972 line at :623, 2124 lines held. D972's sweep deleted fifteen orphaned recordings and nothing re-recorded them, so four citation tasks have missed ever since and the nightly has been red with that sweep as its only failing step. OWED_RECORDINGS declares them, keyed by (task, model set) because the fifteen do not cover all twelve pairs -- legal-cite-liability-cap replays under openai/qwen3:4b -- and stale_declarations subtracts what was held before calling a declaration stale, because the control arm grades from recordings of its own while the omniweave arm misses. All three replays pass, 545 keys, usage byte-identical to the committed file.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -38,7 +38,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
 documents-frozen  0fb241787490bc65e7d65d6f6f345f4eed6a34f66bbb6961e14a3446a0e9de69  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
-documents-frozen  b755fa79199d11bbf0335c007cffc8e0c21935483d852f5f184a6757f2756008  13-quality.md
+documents-frozen  0fe62279ab46b0ba033fbf58cbdd17f4ca5c5d963bbd0b014f45a3d78d9136e5  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
 documents-frozen  d88d138230676efd9a56e0636cf6c08c1228e6cec2b0435dc9e2e14cb074404d  16-roadmap.md
