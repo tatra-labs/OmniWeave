@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -27,6 +29,18 @@ FORBIDDEN = (
 """fixtures/gen/README.md's regime: a generator that reaches one of these is not deterministic."""
 
 
+def _recompressed(raw: bytes, kind: int) -> bytes:
+    """The same container's parts, same names and metadata, written at `kind`. D1031's lever."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as source, zipfile.ZipFile(buffer, "w", kind) as out:
+        for info in source.infolist():
+            fresh = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            fresh.compress_type = kind
+            fresh.create_system = info.create_system
+            out.writestr(fresh, source.read(info.filename))
+    return buffer.getvalue()
+
+
 def _text(corpus: str, scale: str) -> dict[str, str]:
     """Each document's path and text, casefolded. The path counts: an answer may name a file."""
     return {
@@ -46,9 +60,52 @@ def test_every_reference_corpus_is_its_pin_at_both_scales() -> None:
     }
     for corpus in gen.CORPORA:
         for scale in SCALES:
-            digest = hashlib.sha256(gen.manifest_bytes(gen.documents(corpus, scale))).hexdigest()
-            key = f"fixtures/generated/reference/{corpus}-{scale}.manifest"
+            digest = hashlib.sha256(
+                gen.pin_manifest_bytes(gen.documents(corpus, scale))
+            ).hexdigest()
+            key = f"fixtures/generated/reference/{corpus}-{scale}.content"
             assert pins[key] == digest, f"{key}: regenerate and re-pin (fixtures/gen/README.md)"
+
+
+def test_the_pin_is_what_the_generator_decides_and_not_what_the_compressor_decides() -> None:
+    """D1031. `zlib` is not one implementation, so a pin over compressed bytes is not one pin.
+
+    CPython 3.14 on Windows bundles zlib-ng -- `zlib.ZLIB_RUNTIME_VERSION` reads `1.3.1.zlib-ng`
+    against `1.3.1` on 3.13 -- and it emits a different, entirely valid deflate stream for the
+    same input at the same level. Every `.docx`, `.pptx` and `.xlsx` in `data_room` and
+    `personal_archive` moved under it and four pins with them; `legal_matter` has no OOXML part
+    and did not move. D1030 made `bench/serve` run in CI and `windows-latest py3.14` was the one
+    cell of nine that disagreed.
+
+    Asserted without a second interpreter, by building each container BOTH WAYS here: the written
+    bytes differ across compress types and the pin does not. A pin that had quietly gone back to
+    digesting `to_bytes()`, or that had dropped a field, fails on that. Asserted separately, and
+    not implied by it, that the generator still DEFLATES: the corpus the 545 cassettes were
+    recorded against is the deflated one, so storing the parts is not a free improvement but a
+    change to every ingested byte.
+    """
+    seen = 0
+    for corpus in gen.CORPORA:
+        for doc in gen.documents(corpus, "quick"):
+            raw = doc.to_bytes()
+            if raw[:2] != b"PK":
+                continue
+            seen += 1
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                kinds = {info.compress_type for info in archive.infolist()}
+            #  The corpus the 545 cassettes were recorded against is the DEFLATED one. Storing the
+            #  parts would make it the same corpus on every machine and is the fix this is not --
+            #  it changes every ingested byte, so it orphans 17 of the 30 tasks' recordings.
+            assert kinds == {zipfile.ZIP_DEFLATED}, (doc.path, kinds)
+            stored = _recompressed(raw, zipfile.ZIP_STORED)
+            deflated = _recompressed(raw, zipfile.ZIP_DEFLATED)
+            assert stored != deflated, doc.path
+            pins = {gen.pin_of_bytes(one) for one in (raw, stored, deflated)}
+            assert len(pins) == 1, doc.path
+    #  Section 6.8's count: a walk that found no container would make every assertion above
+    #  vacuous. Sixteen at quick scale -- 13 in data_room, 3 in personal_archive, and none at all
+    #  in legal_matter, which is why legal_matter's two pins did not move under zlib-ng.
+    assert seen == 16, f"{seen} OOXML containers at quick scale, not 16; re-derive this count"
 
 
 def test_the_generator_samples_nothing_and_reads_no_clock(monkeypatch: pytest.MonkeyPatch) -> None:

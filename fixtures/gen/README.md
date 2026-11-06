@@ -65,8 +65,23 @@ uv run python fixtures/gen/gen_reference_corpora.py --all --print-sha256   # all
   its one document, and `ABSENT` names the terms no document holds.
 - **Formats are the ones the shipped roster parses**: PDF, DOCX, XLSX, PPTX and CSV. A plain-text
   file is identified and never parsed (D567).
-- **Each corpus is pinned through its manifest**, one `sha256  relpath` line per file, as the
-  incremental roster is. `bench/serve/test_corpora.py` checks the six pins.
+- **Each corpus writes two registers, and `EXPECTED.sha256` pins the second one.**
+  `<corpus>-<scale>.manifest` is one `sha256  relpath` line per file — the bytes as written, which
+  is what `corpora.py` keys the bench cache on. `<corpus>-<scale>.content` is one line per
+  document's *content*: for an OOXML container, each part's name, its pinned date, its
+  `create_system` and its **uncompressed** bytes. `bench/serve/test_corpora.py` checks the six
+  `.content` pins.
+- **Why the pin is not the manifest (D1031).** `zlib` is not one implementation. CPython 3.14 on
+  Windows bundles zlib-ng — `zlib.ZLIB_RUNTIME_VERSION` reads `1.3.1.zlib-ng` against `1.3.1` on
+  3.13 — and it emits a different, entirely valid deflate stream for the same input, so every
+  `.docx`, `.pptx` and `.xlsx` here moves under it and four of the six manifest digests with them.
+  `legal_matter` has no OOXML part and does not move. The pin therefore asserts what this
+  generator decides and nothing the compressor decides.
+- **What that does not fix, and you should know before recording a cassette.** The corpus *bytes*
+  still differ per zlib implementation, so a corpus built under zlib-ng ingests to a different
+  store and a cassette recorded against one does not replay against the other — 17 of the 30
+  tasks miss. ADR-14's replay runs on `ubuntu-latest`, where zlib is zlib. Record and replay on
+  one implementation.
 
 ## `gen_golden40.py`
 
