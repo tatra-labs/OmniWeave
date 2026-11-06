@@ -874,6 +874,25 @@ jobs:
         # but no job runs the search half on it; that gap is stated rather than papered over with
         # a job that would never fire.
         run: uv run pytest fuzz/ -q
+      - name: "bench/serve/ -- the adoption harness's own tests, which testpaths does not reach"
+        # The same decision as the step above, for the same reason and with the same shape: the
+        # workspace root sets testpaths = ["packages"], so a directory outside it is reached by
+        # NAMING it and not by widening that setting.
+        #
+        # Until this step landed, no job ran them. 187 tests, and every one of them a test of the
+        # thing that decides what the agent benchmark measures: the catalogue and its answer key,
+        # the cassette key recipe, the corpus cache, the grader, the control guard. The nightly
+        # exercises that code by replaying 545 recordings through it, which is a different claim --
+        # a replay says the recordings still match, and these say the harness computing the match
+        # is the one the plan specifies. D1030, found by reading a test count that did not move
+        # when five tests landed.
+        #
+        # NINE CELLS, as for fuzz/, and not because they are slow enough to need spreading: all
+        # 187 run in about 17 s. The reason is what they cover. `corpora.py` spells cache paths
+        # with as_posix() and `agent_cassette.py` tags the corpora folder out of every key by
+        # string replacement, so a path-shaped difference between Windows and Linux is exactly the
+        # class of defect here, and a single Linux cell would not see it.
+        run: uv run pytest bench/serve -q
       - name: "portability -- this cell's compiled parts against eval/portability.toml (V10-10)"
         # D914. 00-vision.md's V10-10 asks the 40-unit golden's two compiles to be equal at part
         # "on all 9 cells", and D903 committed the parts table from two cells matched by hand.

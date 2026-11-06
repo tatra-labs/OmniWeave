@@ -99,9 +99,11 @@ import importlib.util
 import re
 import sys
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
 
@@ -984,6 +986,64 @@ def test_publish_is_the_only_job_behind_the_approval_pause(release: Workflow) ->
 #  place the two spellings could disagree. So the shared claim is the SEQUENCE, matched command by
 #  command, and the `--release` argument is asserted separately where it exists.
 _GEN_FIRST_PARTY = re.compile(r"tools/gen_first_party\.py --dist dist(?P<rest>.*)$", re.MULTILINE)
+
+
+NOT_OUR_TESTS: Final[Mapping[str, str]] = {
+    "_collections": (
+        "other projects, read for reference and gitignored (.gitignore:1). 6,546 test files "
+        "belonging to their authors; running them would be running someone else's suite"
+    ),
+    "vendor": (
+        "vendored third-party source, pinned by G12's tools/vendor.toml. Its one test file is "
+        "anydoc's own, and a vendored dependency is verified by its pin and not by its suite"
+    ),
+}
+"""Test directories outside `packages/` whose tests are NOT OURS to run, each with its reason.
+
+Both entries were found by the walk below rather than assumed, and both are correct to leave out
+for reasons a reader cannot guess from the path. A directory absent from here and from the `test`
+job's steps is a directory of tests nobody runs, which is what D1030 was.
+"""
+
+
+def test_every_test_directory_outside_testpaths_is_named_by_a_step(ci: Workflow) -> None:
+    """D1030. `testpaths = ["packages"]`, so a test directory outside it runs only if a step says
+    its name -- which is the decision `fuzz/`'s own step comment records, taken deliberately in
+    preference to widening the setting.
+
+    `bench/serve` was the one that had not been taken. 187 tests, none of which had ever run in
+    CI: the catalogue and its answer key, the cassette key recipe, the corpus cache, the grader,
+    the control guard. The nightly replays 545 recordings THROUGH that code, which is a different
+    claim -- a replay says the recordings still match, and these say the harness computing the
+    match is the one the plan specifies.
+
+    Asserted by walking the tree for test directories rather than by naming the two we know, so a
+    third one cannot land unrun. The walk is what found this; a two-name assertion would have been
+    written the day `bench/serve` was already missing and would have passed.
+    """
+    roots = {
+        path.relative_to(REPO).parts[0]
+        for path in REPO.glob("*/**/test_*.py")
+        if not any(
+            part in {".venv", "__pycache__", "_plan", "node_modules", "site-packages"}
+            for part in path.relative_to(REPO).parts
+        )
+    }
+    #  Both directions: an exemption naming a directory that holds no test is one nobody needs,
+    #  and it would excuse that directory the day one landed there.
+    unused = sorted(set(NOT_OUR_TESTS) - roots)
+    assert not unused, f"NOT_OUR_TESTS declares {unused}, which holds no test; drop the row"
+    outside = roots - {"packages"} - set(NOT_OUR_TESTS)
+    assert outside, "no test directory of ours outside packages/ -- has the tree moved?"
+    body = ci.run_bodies("test")
+    unrun = sorted(root for root in outside if root not in body)
+    assert not unrun, (
+        f"{unrun} hold tests that testpaths = ['packages'] does not reach and no step in the "
+        "`test` job names; add a step, as fuzz/ and bench/serve have"
+    )
+    #  And the two we know, by name, because the walk above would also pass on a tree with none.
+    for named in ("fuzz/", "bench/serve"):
+        assert named in body, named
 
 
 def test_both_build_jobs_run_section_7_3s_four_command_first_party_block(
