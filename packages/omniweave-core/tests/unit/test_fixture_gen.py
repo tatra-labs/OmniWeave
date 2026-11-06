@@ -599,9 +599,14 @@ def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None
         f"fixtures/generated/gen_{SMALL_PAGES}p.pdf",
         f"fixtures/generated/gen_{gen.DEFAULT_PAGES}p.pdf",
         "fixtures/generated/incremental/roster-step0.manifest",
-        #  ADR-14 D14.1's corpora, checked by bench/serve/test_corpora.py.
+        #  ADR-14 D14.1's corpora, checked by bench/serve/test_corpora.py. `.content` and not
+        #  `.manifest`: the manifest is a digest per written FILE, and an OOXML container's bytes
+        #  are not a function of its parts alone, because zlib is not one implementation. CPython
+        #  3.14 on Windows bundles zlib-ng and deflates the same input differently, so four of
+        #  these six moved there and nowhere else. The `.content` pin is each part's name, date,
+        #  `create_system` and UNCOMPRESSED bytes, and is equal under both. **D1031.**
         *(
-            f"fixtures/generated/reference/{corpus}-{scale}.manifest"
+            f"fixtures/generated/reference/{corpus}-{scale}.content"
             for corpus in ("legal_matter", "data_room", "personal_archive")
             for scale in ("full", "quick")
         ),
