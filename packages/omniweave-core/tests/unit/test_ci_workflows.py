@@ -1003,6 +1003,10 @@ NOT_OUR_TESTS: Final[Mapping[str, str]] = {
 Both entries were found by the walk below rather than assumed, and both are correct to leave out
 for reasons a reader cannot guess from the path. A directory absent from here and from the `test`
 job's steps is a directory of tests nobody runs, which is what D1030 was.
+
+`_collections` is `.gitignore`d, so a CI checkout does not have it at all -- which is why the
+walk checks a row against the tree only when the directory is there, and against `.gitignore`
+when it is not.
 """
 
 
@@ -1029,10 +1033,29 @@ def test_every_test_directory_outside_testpaths_is_named_by_a_step(ci: Workflow)
             for part in path.relative_to(REPO).parts
         )
     }
-    #  Both directions: an exemption naming a directory that holds no test is one nobody needs,
-    #  and it would excuse that directory the day one landed there.
-    unused = sorted(set(NOT_OUR_TESTS) - roots)
-    assert not unused, f"NOT_OUR_TESTS declares {unused}, which holds no test; drop the row"
+    #  Both directions, and the second direction is the one CI taught. An exemption naming a
+    #  directory that holds no test is one nobody needs, and it would excuse that directory the
+    #  day a test landed there -- but `_collections/` is `.gitignore`d, so on a CI checkout it is
+    #  ABSENT rather than empty, and the first spelling of this failed all nine cells. A row is
+    #  stale only when its directory is here and holds nothing. When it is not here at all, it
+    #  must be a directory no checkout ever has, and `.gitignore` is the register that says so:
+    #  a row misspelling a name would be both absent and unignored, which still fails.
+    ignored = {
+        line.strip().rstrip("/")
+        for line in (REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", "!"))
+    }
+    for declared in sorted(NOT_OUR_TESTS):
+        if (REPO / declared).is_dir():
+            assert declared in roots, (
+                f"NOT_OUR_TESTS declares {declared!r}, which is present and holds no test file; "
+                "drop the row"
+            )
+        else:
+            assert declared in ignored, (
+                f"NOT_OUR_TESTS declares {declared!r}, which this checkout does not have and "
+                ".gitignore does not name; the row is a typo, or the directory is gone"
+            )
     outside = roots - {"packages"} - set(NOT_OUR_TESTS)
     assert outside, "no test directory of ours outside packages/ -- has the tree moved?"
     body = ci.run_bodies("test")
