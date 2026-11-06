@@ -202,7 +202,7 @@ def test_the_generator_is_where_adr_14_says() -> None:
 def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     tmp_path: Path,
 ) -> None:
-    from corpora import KEYED_D653, ORDINALS, prepare  # noqa: PLC0415 -- the cache half
+    from corpora import KEYED_D653, ORDINALS, build_identity, prepare  # noqa: PLC0415
 
     documents = gen.documents("personal_archive", "quick")
     keyed = gen.manifest_bytes(documents) + KEYED_D653 + ORDINALS
@@ -210,7 +210,9 @@ def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     base = tmp_path / f"personal_archive-quick-{digest[:12]}"
     (base / "project").mkdir(parents=True)
     (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
-    (base / ".ready").write_text(digest + "\n", encoding="utf-8")
+    #  D1028: the build line is what makes this a hit. Without it the entry is one whose builder
+    #  is unknown, and the test below is that such an entry rebuilds.
+    (base / ".ready").write_text(f"{digest}\nbuild {build_identity()}\n", encoding="utf-8")
     stale = tmp_path / "personal_archive-quick-000000000000"
     (stale / "project").mkdir(parents=True)
     (stale / ".ready").write_text("0" * 64 + "\n", encoding="utf-8")
@@ -225,6 +227,117 @@ def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     budget = tomllib.loads(written)["retrieval"]["budget"]
     assert budget["channel_ms"]["lexical"] > 50
     assert sum(budget["channel_ms"].values()) <= budget["query_ms"] - budget["hydration_reserve_ms"]
+
+
+def test_an_entry_another_build_ingested_is_rebuilt_under_the_same_key(tmp_path: Path) -> None:
+    """D1028. The key covers the DOCUMENTS; the entry is a store this build's `ow add` wrote.
+
+    What this prevents shipped, and it did not read as a cache problem at all: a `data_room` entry
+    made by an older build was reused under its own key, `ow_query` answered differently out of it,
+    and the only thing that surfaced was one cassette key -- 83acce23... on this machine against
+    CI's 814b11e8... for `data-cite-nda-term`. That read as a key that was not machine-stable. A
+    fresh ingest on the same machine computed CI's key exactly, which is what named the real cause.
+
+    Rebuilt UNDER THE SAME KEY, which is the half that matters: the folder name is in every
+    recorded path, so moving the key would orphan 200 committed recordings (see `KEYED_D653`).
+    Here the ingest cannot run -- the interpreter does not exist -- so the refusal is the proof
+    that reuse was refused, and the log line is the proof it was refused for this reason.
+    """
+    from corpora import KEYED_D653, ORDINALS, CorpusError, prepare  # noqa: PLC0415
+
+    documents = gen.documents("personal_archive", "quick")
+    digest = hashlib.sha256(gen.manifest_bytes(documents) + KEYED_D653 + ORDINALS).hexdigest()
+    base = tmp_path / f"personal_archive-quick-{digest[:12]}"
+    (base / "project").mkdir(parents=True)
+    (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
+    (base / ".ready").write_text(f"{digest}\nbuild {'a' * 64}\n", encoding="utf-8")
+    lines: list[str] = []
+
+    with pytest.raises(CorpusError):
+        prepare(
+            "personal_archive",
+            "quick",
+            cache_root=tmp_path,
+            python="no-such-interpreter",
+            log=lines.append,
+        )
+
+    said = "\n".join(lines)
+    assert "ingested by another build (aaaaaaaaaaaa)" in said, said
+    assert "cached," not in said, "the entry was reused after all"
+
+
+def test_an_entry_that_records_no_builder_is_rebuilt(tmp_path: Path) -> None:
+    """Every entry written before D1028, and every half-built one. An entry whose builder is
+    unknown cannot be shown to be this build's, so it is not reused -- and it rebuilds QUIETLY,
+    because `None` is not another build, it is no claim either way."""
+    from corpora import KEYED_D653, ORDINALS, CorpusError, prepare  # noqa: PLC0415
+
+    documents = gen.documents("personal_archive", "quick")
+    digest = hashlib.sha256(gen.manifest_bytes(documents) + KEYED_D653 + ORDINALS).hexdigest()
+    base = tmp_path / f"personal_archive-quick-{digest[:12]}"
+    (base / "project").mkdir(parents=True)
+    (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
+    (base / ".ready").write_text(digest + "\n", encoding="utf-8")
+    lines: list[str] = []
+
+    with pytest.raises(CorpusError):
+        prepare(
+            "personal_archive",
+            "quick",
+            cache_root=tmp_path,
+            python="no-such-interpreter",
+            log=lines.append,
+        )
+
+    said = "\n".join(lines)
+    assert "cached," not in said, said
+    assert "another build" not in said, "no claim is not a conflicting claim"
+
+
+def test_the_build_identity_moves_with_a_shipped_source_and_not_with_anything_else(
+    tmp_path: Path,
+) -> None:
+    """`BUILD_SOURCES` is `packages/*/src/**/*.py`, and the identity is over path AND bytes.
+
+    The path half is what a rename has to move: two trees whose files hold the same bytes under
+    different names are different builds, and a digest over bytes alone would call them one.
+    """
+    from corpora import build_identity  # noqa: PLC0415
+
+    def tree(name: str, body: str, where: Path) -> str:
+        src = where / "packages" / "omniweave-x" / "src" / "omniweave_x"
+        src.mkdir(parents=True)
+        (src / name).write_text(body, encoding="utf-8")
+        (where / "README.md").write_text("not a shipped source\n", encoding="utf-8")
+        return build_identity(where)
+
+    one = tree("a.py", "x = 1\n", tmp_path / "one")
+    same = tree("a.py", "x = 1\n", tmp_path / "same")
+    body = tree("a.py", "x = 2\n", tmp_path / "body")
+    renamed = tree("b.py", "x = 1\n", tmp_path / "renamed")
+
+    assert one == same, "the identity is of the sources, not of where the tree happens to sit"
+    assert one != body, "a changed shipped source is a different build"
+    assert one != renamed, "a renamed shipped source is a different build"
+    #  And the non-source file is not in it: all four trees carry the same README, and `same`
+    #  equalling `one` above would hold either way, so this is the assertion that pins it.
+    (tmp_path / "same" / "README.md").write_text("edited\n", encoding="utf-8")
+    build_identity.cache_clear()
+    assert build_identity(tmp_path / "same") == one, "a file outside BUILD_SOURCES moved it"
+
+
+def test_a_tree_with_no_shipped_sources_falls_back_to_the_installed_version(
+    tmp_path: Path,
+) -> None:
+    """A wheel-only checkout has no `packages/*/src`. The fallback is coarser than a digest and
+    honest about it; what it must not be is an identity every build shares, which is what an
+    empty digest would have been."""
+    from importlib.metadata import version  # noqa: PLC0415
+
+    from corpora import build_identity  # noqa: PLC0415
+
+    assert build_identity(tmp_path) == "version:" + version("omniweave")
 
 
 def test_a_damaged_corpus_is_its_own_entry_with_its_answer_s_file_damaged(tmp_path: Path) -> None:

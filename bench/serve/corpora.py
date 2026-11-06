@@ -6,6 +6,19 @@ costs: minutes for the 5,000-page matter. So a prepared corpus is cached under
 second run reuses it.
 - A generator change changes the digest, so a stale cache is never reused.
 - A half-built entry lacks `.ready`, and is rebuilt.
+- **An entry a DIFFERENT BUILD ingested is rebuilt, in place, under the same key.** `.ready`
+  records `build_identity()` and a hit compares it. D1028, and the line above it is why: the key
+  covers the manifest, the damage spec and two keyed constants, so it moves when the DOCUMENTS
+  move and never when the code that indexes them does. The entry is a SQLite store built by
+  `ow add`, and what an agent reads out of it -- `ow_query`'s ranking, its block ids, its byte
+  cliff -- is this build's answer, not the manifest's. So a stale entry made the bench answer
+  differently from CI under a key that said it was the same corpus, and the one thing that
+  surfaced was a cassette key: 83acce23... on this machine against CI's 814b11e8... for
+  `data-cite-nda-term`, which read as a key that was not machine-stable and was not that at all.
+  A fresh ingest on the same machine computed CI's key exactly. The identity is NOT in the key
+  on purpose: the key names the entry's folder, so moving it would orphan every committed
+  recording for a corpus that is, by the manifest's measurement, the same one (see `KEYED_D653`).
+  Rebuilding the contents under the same name costs one ingest and orphans nothing.
 
 Each entry is a project of its own, laid out as `first_answer.py` lays out V01-15's folder:
 - `project/omniweave.toml`: one corpus, the default, and D576's three `[drivers]` opt-ins;
@@ -33,6 +46,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import cache
+from importlib.metadata import version
 from pathlib import Path
 from types import ModuleType
 from typing import Final
@@ -95,6 +109,37 @@ GENERATOR: Final[Path] = (
     Path(__file__).resolve().parents[2] / "fixtures" / "gen" / "gen_reference_corpora.py"
 )
 ADD_TIMEOUT_S: Final[Mapping[str, float]] = {"quick": 600, "full": 3_600}
+
+REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
+BUILD_SOURCES: Final[str] = "packages/*/src/**/*.py"
+"""What `build_identity` hashes: every shipped Python source, by path and bytes. **D1028.**
+
+Broad on purpose. The narrow set would be whatever reaches `ow add` and `ow_query`, and that
+boundary is not knowable from here and would rot the first time a helper moved -- the cost of
+getting it wrong is a cache that silently disagrees with CI, which is the defect this exists for.
+The cost of getting it broad is one re-ingest after a source edit, paid locally and never in CI,
+which builds every corpus fresh.
+"""
+
+
+@cache
+def build_identity(root: Path = REPO_ROOT) -> str:
+    """The sha256 of this build's shipped sources, for `.ready`. **D1028.**
+
+    Falls back to the installed `omniweave` version when no source tree is there to read, which is
+    what a wheel-only checkout has: a coarser identity than the digest, and an honest one, rather
+    than an identity every build shares.
+    """
+    digest = hashlib.sha256()
+    found = 0
+    for path in sorted(root.glob(BUILD_SOURCES)):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        found += 1
+    if found == 0:
+        return "version:" + version("omniweave")
+    return digest.hexdigest()
 
 
 class CorpusError(RuntimeError):
@@ -192,7 +237,9 @@ def prepare(
     ready = base / ".ready"
     project = base / "project"
     shown = f"{corpus} ({scale}{', ' + label if label else ''})"
-    if ready.is_file() and (project / "omniweave.index.lock").is_file():
+    built_by = _built_by(ready)
+    identity = build_identity()
+    if ready.is_file() and (project / "omniweave.index.lock").is_file() and built_by == identity:
         #  Rewritten on a hit too: the budget is read per query, not at ingest, and a cache made
         #  before it would otherwise answer with the shipped one.
         (project / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
@@ -202,6 +249,11 @@ def prepare(
             damage=damage,
         )  # fmt: skip
     if base.exists():
+        #  D1028: name the reason, because this rebuild looks exactly like a cold cache and
+        #  is not one -- the documents are identical and the store is this build's, not that
+        #  build's. A silent re-ingest here is what made the stale entry hard to see.
+        if built_by is not None and built_by != identity:
+            log(f"  corpus    {shown}: ingested by another build ({built_by[:12]}); rebuilding")
         shutil.rmtree(base)
     (project / "docs").mkdir(parents=True)
     (project / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
@@ -247,7 +299,7 @@ def prepare(
             f"at {project.as_posix()} to inspect: `ow ingest --corpus docs` names each unit"
         )
         raise CorpusError(msg)
-    ready.write_text(digest + "\n", encoding="utf-8")
+    ready.write_text(f"{digest}\nbuild {identity}\n", encoding="utf-8")
     log(f"  corpus    {shown}: ingested in {seconds} s, {base.as_posix()}")
     return Prepared(
         corpus, scale, digest, base, cached=False, add_seconds=seconds, env=env, damage=damage
@@ -269,6 +321,21 @@ def _not_parsed(output: bytes) -> int | None:
         if reason == "not_parsed":
             return int(count)
     return 0
+
+
+def _built_by(ready: Path) -> str | None:
+    """The `build_identity` an entry's `.ready` records, or `None` when it records none.
+
+    `None` is every entry written before D1028 and every half-built one, and both must rebuild:
+    an entry whose builder is unknown cannot be shown to be this build's.
+    """
+    if not ready.is_file():
+        return None
+    for line in ready.read_text(encoding="utf-8").splitlines():
+        kind, _, found = line.partition(" ")
+        if kind == "build" and found:
+            return found
+    return None
 
 
 def _damage_bytes(damage: tuple[tuple[str, str], ...]) -> bytes:
