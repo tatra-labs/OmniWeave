@@ -2,13 +2,32 @@
 
 Four recipes, and one paragraph of honesty about what they prove.
 
-Specified by [the repository layout](plan/11-repo-layout.md) §7.5. Checklist step 15 runs all four
-from a clean machine against the published wheel, which is the only run that catches a recipe that
-has stopped working before a user does.
+Specified by [the repository layout](plan/11-repo-layout.md) §7.5. Checklist step 15 runs all
+four from a clean machine against the published wheel, which is the only run that catches a
+recipe that has stopped working before a user does. It was rehearsed early, at the `v1.0.0` tag
+and against that tag's own artefacts, which is how the two things the last section records were
+found here rather than by a reader.
 
 Throughout, `RELEASE` is the version without its leading `v` — `1.0.0` for tag `v1.0.0` — and the
 repository is `tatra-labs/OmniWeave`. Both appear verbatim in each recipe rather than as shell
 variables, because a recipe a reader has to assemble is a recipe a reader gets wrong.
+
+**Where the files come from.** Every recipe starts from files you downloaded, and at v1.0 those are
+the release run's workflow artefacts rather than release-page assets, because nothing cuts the
+release object yet — the last section says so. For `v1.0.0` that run is `41803520417`:
+
+```bash
+gh run download 41803520417 --repo tatra-labs/OmniWeave --name dist --dir dist
+gh run download 41803520417 --repo tatra-labs/OmniWeave --name provenance.intoto.jsonl --dir prov
+```
+
+`--name` is the artefact's name and `--dir` is a directory, so the second command writes
+`prov/provenance.intoto.jsonl` — not a file at the path the artefact is named after, which is the
+mistake that reads as a `PermissionError` on the next command. `gh run list --repo
+tatra-labs/OmniWeave --workflow release.yml` finds the run for any other tag.
+
+Workflow artefacts expire (§7.4), so once the release page exists its assets are the durable copies
+and both commands become one `gh release download v1.0.0`.
 
 ## 1. A wheel's build provenance
 
@@ -18,6 +37,11 @@ gh attestation verify omniweave_core-1.0.0-py3-none-any.whl --repo tatra-labs/Om
 
 This is the GitHub build attestation: the wheel was built by a workflow in this repository, at a
 commit this repository contains.
+
+**This recipe does not apply at v1.0.** The step that writes that attestation sits in the
+gated-off `publish` job, so there is nothing for this command to find and it answers `no
+attestations found` — see
+[what applies at v1.0](#what-applies-at-v10-and-what-is-still-owed).
 
 ## 2. The SLSA provenance for the whole release
 
@@ -31,8 +55,27 @@ slsa-verifier verify-artifact omniweave_core-1.0.0-py3-none-any.whl \
 fourteen wheels, every wheel `py3-none-any` — so one statement verifies any of them. Pass whichever
 artefact you downloaded.
 
-`slsa-verifier` is the one tool here you may not have; `uvx slsa-verifier` runs it without
-installing it.
+`slsa-verifier` is the one tool here you may not have, and it is **not** a Python package. There is
+no `slsa-verifier` on PyPI under that name or any nearby one, so `uvx slsa-verifier` ends in
+`No solution found when resolving tool dependencies` — which is what this document told a reader to
+run until step 15 was rehearsed at v1.0 and found it. It is a Go binary. Three ways to get one:
+
+```bash
+# a release binary, one per platform; linux-amd64 shown, and the tag is pinned on purpose
+curl -sSLo slsa-verifier \
+  https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64
+chmod +x slsa-verifier
+
+# with a Go toolchain
+go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@v2.7.1
+
+# on macOS
+brew install slsa-verifier
+```
+
+Each release binary ships a `.intoto.jsonl` beside it, so the verifier can be verified by a copy of
+itself. That chain is real, and it still bottoms out in one binary you decided to trust — the same
+limit the last section states about ours.
 
 ## 3. An SBOM, or the first-party manifest
 
@@ -52,6 +95,10 @@ slash: it matches any workflow in this repository and not a repository whose nam
 same way. Omitting `--certificate-identity-regexp` or `--certificate-oidc-issuer` makes `cosign`
 accept **any** valid Sigstore signature, which verifies that someone signed something.
 
+**This recipe does not apply at v1.0** either: no SBOM and no signed manifest asset are
+produced yet, for the same reason — see
+[what applies at v1.0](#what-applies-at-v10-and-what-is-still-owed).
+
 ## 4. The in-wheel first-party manifest against the signed asset
 
 ```bash
@@ -64,7 +111,9 @@ python -c "import importlib.resources as r, sys; \
 its distribution name is in the release manifest's list **and** its `dist_sha256` matches. That
 manifest ships inside the `omniweave-core` wheel, and a manifest carried by the artefact it
 describes is not evidence on its own — so it is also published as a `cosign sign-blob`ed asset, and
-this recipe compares the two.
+this recipe compares the two. **That asset is not published at v1.0**, so this recipe has only
+one of its two inputs today — see
+[what applies at v1.0](#what-applies-at-v10-and-what-is-still-owed).
 
 `tools/manifest_diff.py` imports only the standard library and takes `-` for stdin, so it runs from
 a source checkout or copied beside the two files, with no omniweave installed. A verifier you have
@@ -78,8 +127,8 @@ the installs an auditor is most likely to be inspecting.
 
 **`omniweave-core` has no row in either manifest, and that is the correct answer rather than a
 gap.** Core is the module that computes the trust tier, so a row asserting core's own hash would be
-a witness testifying to itself. Core's integrity is covered by recipes 1 and 2, which are claims by
-the build system instead.
+a witness testifying to itself. Core's integrity is covered by recipe 2 instead (and by recipe 1
+once publishing is on), which are claims made by the build system rather than by core.
 
 ## What these prove, and what they do not
 
@@ -97,22 +146,36 @@ and git-ignored — so `compute_trust` returns `unpinned` with a `Degradation(ki
 That is the designed answer for an editable install, which has no wheel and therefore no digest to
 attest, and recipe 4 has nothing to compare against it.
 
-## Before the first release
+## What applies at v1.0, and what is still owed
 
 Two things in the tree still have to be reconciled, and both are named here rather than left for
 whoever runs the checklist to discover:
 
-- **Recipes 1 and 2 work at v1.0; recipe 3 has nothing to verify yet.** By a user ruling of
+- **Recipe 2 is the only one of the four that applies at v1.0.** By a user ruling of
   2026-10-29 the publish half of `release.yml` is gated off — `sbom-sign` and `publish` carry
   `if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'`, an unset repository variable — because
   [the roadmap](plan/16-roadmap.md)'s W10.9, release engineering, is the item that turns that job's
   marked steps into commands and it is not built. So a `v*` tag runs tag-guard, ci, build and
   provenance, and the GitHub release is cut from those artefacts: the 28 reproducible files and
-  `provenance.intoto.jsonl`, which are exactly what recipes 1 and 2 verify. No SBOM is produced,
-  so recipe 3 applies to a later release, and recipe 4's signed asset arrives with it.
+  `provenance.intoto.jsonl`. That is recipe 2's input, and recipe 2's alone.
+
+  **Recipe 1 is the one this section used to get wrong.** `gh attestation verify` reads GitHub's
+  own attestation store, and what writes that store is the `actions/attest-build-provenance` step,
+  which sits in the `publish` job. A gated-off `publish` therefore means no build attestation
+  exists for this tag at all, and recipe 1 answers `no attestations found`. SLSA provenance
+  published beside the artefacts is a different statement in a different place, and holding one
+  does not give you the other. Recipe 3 has no SBOM and recipe 4 no signed asset, both from that
+  same skipped job.
 
   One consequence worth knowing: an environment gates only the jobs that declare it, and `publish`
   is the only one, so **the `release` environment is not needed for v1.0**.
+
+  What was checked at v1.0, because a section about what works should say how it knows: the release
+  run on tag `v1.0.0` produced a `provenance.intoto.jsonl` whose statement names the
+  `slsa-github-generator`'s `generator_generic_slsa3.yml` as its `builder.id`,
+  `git+https://github.com/tatra-labs/OmniWeave@refs/tags/v1.0.0` as its `configSource`, and 28
+  subjects whose digests match the 28 built files in both directions. The DSSE signature over that
+  statement was **not** checked by hand, because checking it is precisely what recipe 2 is for.
 - **The slug is settled.** `tatra-labs/OmniWeave` is canonical (a user ruling of 2026-10-29), and
   `release.yml`, §7.6's step 0 and the generated `llms.txt` now agree on it, so a signature issued
   by this repository matches the identity the workflow verifies against. The recipes above use it.

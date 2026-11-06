@@ -5,11 +5,11 @@
 `docs/ARCHITECTURE.md` and `docs/plan/*.md` -- so none of them is in it, and widening that walk
 would contradict a plan-stated scope rather than fix a gate. These are their checks instead.
 
-The last test is the interesting one. `docs/verify.md`'s recipes name the repository the artefacts
-will actually come from, while `release.yml:316` still pins cosign's identity regexp to a different
-slug, so the document carries a note saying so. That note is a declared exception, and a declared
-exception is checked in BOTH directions: the day the workflow agrees with the shipped homepage, the
-note is wrong and this test says so.
+The slug test is the interesting one. `docs/verify.md`'s recipes name the repository the artefacts
+will actually come from, and while `release.yml`'s cosign identity regexp names a different one the
+document has to carry a note saying so. That note is a declared exception, and a declared exception
+is checked in BOTH directions: the two agree today, so the note must be ABSENT, and the day they
+diverge again this test asks for it back.
 """
 
 from __future__ import annotations
@@ -60,12 +60,16 @@ RELEASE: Final[str] = tomllib.loads(
 )["project"]["version"]
 """`RELEASE`, read from the one site that declares it."""
 
-NOT_THE_RELEASE: Final[frozenset[str]] = frozenset({"4.30.1"})
+NOT_THE_RELEASE: Final[frozenset[str]] = frozenset({"4.30.1", "2.7.1"})
 """Versions in these documents that are deliberately NOT `RELEASE`, each with its reason.
 
 `4.30.1` is `pypdfium2`'s, in `driver-authors.md`'s worked `dependencies = ["pypdfium2>=4.30,
 !=4.30.1"]` -- a third party's yanked patch, which has nothing to do with ours and must not move
 when ours does.
+
+`2.7.1` is `slsa-verifier`'s own release, in `verify.md`'s recipe 2 install block (D1027). It is
+pinned rather than floating for the reason section 6.7 pins every other tool, and it moves when
+that project releases, not when we do.
 """
 
 
@@ -102,10 +106,11 @@ def test_verify_md_carries_section_7_5s_four_recipes_and_its_honest_paragraph() 
 
 def test_verify_md_says_which_recipes_a_v1_0_tag_can_actually_satisfy() -> None:
     """D1016 changed what this document owes a reader. The publish half of `release.yml` is gated
-    off, so recipes 1 and 2 verify artefacts a `v*` tag really produces -- the 28 reproducible
-    files and `provenance.intoto.jsonl` -- while recipe 3 has no SBOM to verify and recipe 4 no
-    signed asset. A verification document that listed four recipes without saying which two work
-    today would send a reader after a blob no release from this tree produces.
+    off, so a `v*` tag really produces only two things -- the 28 reproducible files and
+    `provenance.intoto.jsonl` -- and recipe 2 is the one recipe that takes them. Recipe 3 has no
+    SBOM to verify, recipe 4 no signed asset, and recipe 1 no build attestation (D1027, asserted
+    below). A verification document that listed four recipes without saying which one works today
+    would send a reader after a blob no release from this tree produces.
 
     The condition is asserted as the literal that `release.yml` carries, so the document cannot
     describe a gate the workflow has stopped applying.
@@ -121,6 +126,68 @@ def test_verify_md_says_which_recipes_a_v1_0_tag_can_actually_satisfy() -> None:
         "if release.yml no longer gates the publish half, docs/verify.md's note is the stale one"
     )
     assert "cannot complete a release" in workflow.lower()
+
+
+def _jobs_naming(workflow: str, needle: str) -> frozenset[str]:
+    """Every job in `release.yml` whose body mentions `needle`.
+
+    A two-space key is not always a job -- `on:`'s own children are at that indent too -- but the
+    walk only attributes a line to whatever key it last saw, and the one caller below asserts the
+    whole set, so a stray attribution would fail loudly rather than pass.
+    """
+    jobs: set[str] = set()
+    current: str | None = None
+    for line in workflow.splitlines():
+        header = re.fullmatch(r"  ([a-z][a-z0-9-]*):", line)
+        if header is not None:
+            current = header.group(1)
+        elif needle in line and current is not None:
+            jobs.add(current)
+    return frozenset(jobs)
+
+
+def test_verify_md_does_not_send_a_reader_to_a_tool_that_is_not_on_pypi() -> None:
+    """D1027. `slsa-verifier` is a Go binary, and this document used to say `uvx slsa-verifier`
+    runs it. It does not: there is no such distribution on PyPI under that name or any nearby one
+    (404 for `slsa-verifier`, `slsa-verifier-bin`, `pyslsa` and `slsa`, checked 2026-11-04), so the
+    one tool the document admits a reader may not have was the one it could not get.
+
+    Checked the way `driver-authors.md`'s `ow conform` disclaimer is: a spelling that must not be
+    an instruction is allowed to appear exactly once, in the sentence that says it fails. A plain
+    `not in` would be satisfied by deleting the warning as well as by fixing the recipe.
+    """
+    text = VERIFY.read_text(encoding="utf-8")
+    mentions = [line for line in text.splitlines() if "uvx slsa-verifier" in line]
+    assert len(mentions) == 1, mentions
+    assert "no `slsa-verifier` on PyPI" in text, "the mention must be the correction, not a recipe"
+    assert "No solution found when resolving tool dependencies" in text, "what it fails with"
+    # And a channel that works, in both forms, because a reader with no Go toolchain needs the
+    # binary and a reader on a locked-down machine needs the source build.
+    assert "go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@" in text
+    assert "/slsa-framework/slsa-verifier/releases/download/" in text
+
+
+def test_verify_md_pins_recipe_1s_blocker_to_the_job_that_actually_holds_the_step() -> None:
+    """The other half of D1027, and the one a reader hits first.
+
+    `gh attestation verify` reads GitHub's attestation store, which only
+    `actions/attest-build-provenance` writes -- and that step is in `publish`, the job D1016 gates
+    off. So recipe 1 cannot pass at v1.0 either, which this document asserted the opposite of: it
+    said *"Recipes 1 and 2 work at v1.0"*. Having `provenance.intoto.jsonl` is not having a build
+    attestation; they are different statements in different places.
+
+    The assertion is over `release.yml`'s own job layout rather than over prose, so the day the
+    attest step moves out of `publish` -- or `publish` stops being gated -- this fails instead of
+    quietly describing a repository that has changed underneath it.
+    """
+    text = VERIFY.read_text(encoding="utf-8")
+    workflow = RELEASE_YML.read_text(encoding="utf-8")
+    assert _jobs_naming(workflow, "actions/attest-build-provenance") == frozenset({"publish"}), (
+        "docs/verify.md says recipe 1 fails because the attest step is in the gated-off publish job"
+    )
+    assert "actions/attest-build-provenance" in text, "the document names the step, not just a job"
+    assert "no attestations found" in text, "and what the command answers when there is none"
+    assert "Recipe 2 is the only one of the four that applies at v1.0" in text
 
 
 def test_ts_sdk_trigger_states_both_halves_of_the_written_condition() -> None:
