@@ -1060,7 +1060,14 @@ def documents(corpus: str, scale: str) -> tuple[Document, ...]:
 
 
 def manifest_lines(docs: Sequence[Document]) -> list[str]:
-    """`sha256  relpath` per file, sorted: what `EXPECTED.sha256` pins through `manifest_digest`."""
+    """`sha256  relpath` per file, sorted: the BYTES each document is written as.
+
+    A `sha256sum -c`-checkable manifest of the written corpus, and what `corpora.py` keys the bench
+    cache on -- which is why it stays a digest of `to_bytes()` and not of the content pin beside
+    it. Two corpora whose parts say the same thing but whose containers differ ingest to different
+    stores, so a cache keyed on content would hand a run a store built from other bytes. That is
+    D1028's defect exactly, and D1031 is not allowed to reintroduce it.
+    """
     return [f"{hashlib.sha256(doc.to_bytes()).hexdigest()}  {doc.path}" for doc in docs]
 
 
@@ -1068,17 +1075,74 @@ def manifest_bytes(docs: Sequence[Document]) -> bytes:
     return ("\n".join(manifest_lines(docs)) + "\n").encode("ascii")
 
 
+def pin_bytes(doc: Document) -> bytes:
+    """One document's CONTENT, canonically: what `EXPECTED.sha256` pins. **D1031.**
+
+    For everything that is not a ZIP this is the file's bytes. For the OOXML containers it is each
+    part's name, its pinned date and `create_system`, and the part's UNCOMPRESSED bytes -- because
+    the compressed bytes are not a function of the input alone.
+
+    `zlib` is not one implementation. CPython 3.14 on Windows bundles zlib-ng, where
+    `zlib.ZLIB_RUNTIME_VERSION` reads `1.3.1.zlib-ng` against `1.3.1` on 3.13, and it emits a
+    different -- entirely valid -- deflate stream for the same input at the same level. Every
+    `.docx`, `.pptx` and `.xlsx` in `data_room` and `personal_archive` moved under it, by a byte
+    or ten each, and four manifest pins with them. `legal_matter` has no OOXML part and did not
+    move. Found when D1030 made `bench/serve` run in CI and `windows-latest py3.14` was the one
+    cell of nine that disagreed with the pin.
+
+    So the pin asserts what the generator decides and nothing the compressor decides. What the
+    compressor decides is still real, and is NOT fixed here: a corpus deflated by zlib-ng is a
+    different corpus to ingest, so a cassette recorded against one does not replay against the
+    other. ADR-14's replay runs on `ubuntu-latest`, where zlib is zlib. CHANGELOG.md's known
+    limitations carry that gap.
+    """
+    return pin_of_bytes(doc.to_bytes())
+
+
+def pin_of_bytes(raw: bytes) -> bytes:
+    """`pin_bytes` over bytes already in hand, so a test can pin the same container twice over."""
+    if raw[:2] != b"PK":
+        return raw
+    parts: list[bytes] = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        for info in archive.infolist():
+            parts.append(info.filename.encode("utf-8"))
+            parts.append(repr(info.date_time).encode("ascii"))
+            parts.append(bytes([info.create_system]))
+            parts.append(archive.read(info.filename))
+    return b"\0".join(parts)
+
+
+def pin_lines(docs: Sequence[Document]) -> list[str]:
+    """`sha256  relpath` per document's CONTENT, sorted. Not a manifest of the written files."""
+    return [f"{hashlib.sha256(pin_bytes(doc)).hexdigest()}  {doc.path}" for doc in docs]
+
+
+def pin_manifest_bytes(docs: Sequence[Document]) -> bytes:
+    """The `.content` file's bytes. The header is why a reader does not run `sha256sum -c` on it."""
+    header = (
+        "# CONTENT digests, not file digests: a part's uncompressed bytes, so the pin is the same\n"
+        "# under zlib and under zlib-ng (D1031). The file digests are in the .manifest beside it.\n"
+    )
+    return (header + "\n".join(pin_lines(docs)) + "\n").encode("ascii")
+
+
 def write_corpus(dest: Path, corpus: str, scale: str) -> tuple[Path, str]:
-    """Write every file under `dest` and the manifest beside it. Returns the manifest and digest."""
+    """Write every file under `dest`, the byte manifest and the content pin beside it.
+
+    Returns the `.content` pin's path and digest -- the one `EXPECTED.sha256` holds (D1031).
+    """
     docs = documents(corpus, scale)
     for doc in docs:
         path = dest / doc.path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(doc.to_bytes())
     manifest = dest.parent / f"{dest.name}.manifest"
-    raw = manifest_bytes(docs)
-    manifest.write_bytes(raw)
-    return manifest, hashlib.sha256(raw).hexdigest()
+    manifest.write_bytes(manifest_bytes(docs))
+    pin = dest.parent / f"{dest.name}.content"
+    raw = pin_manifest_bytes(docs)
+    pin.write_bytes(raw)
+    return pin, hashlib.sha256(raw).hexdigest()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
