@@ -1,4 +1,4 @@
-# 1.0.0 - unreleased
+# 1.0.0 - 2026-11-10
 
 The first published release. omniweave indexes documents into a local SQLite corpus, keeping page
 and polygon provenance. It serves cited passages to an agent over MCP, and compiles agent output
