@@ -876,12 +876,16 @@ def test_a_register_key_no_document_names_fails(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_every_relative_link_and_section_reference_in_the_walk_resolves() -> None:
-    """3,176 links and 1,793 section cross-references, zero unresolved. D991's move is what made
-    this true: its commit computed the transitive link closure rather than picking documents."""
+    """3,177 links and 1,793 section cross-references, zero unresolved. D991's move is what made
+    this true: its commit computed the transitive link closure rather than picking documents.
+
+    The link total is measured, so any document that adds or drops a relative link moves it and
+    is re-derived here. 3,176 -> 3,177 is D1033's one link to the roadmap, from the step 0 row
+    whose mechanism that item now owns."""
     report, findings = gd.check_clause_d3()
     assert findings == [], headlines(findings)
     line = report[0]
-    assert "3176 relative link(s)" in line
+    assert "3177 relative link(s)" in line
     assert "1793 section cross-reference(s)" in line
 
 
