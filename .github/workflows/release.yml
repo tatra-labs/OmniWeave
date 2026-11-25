@@ -92,6 +92,28 @@ on:
     # run never gets a warm cache and budgeting one would be a planning error.
     tags: ["v*"]
 
+  # D1036: W10.9's bootstrap needs FOURTEEN publish runs of ONE tag. A PyPI pending publisher is
+  # unique on (owner, repository, workflow, environment) and converts to a normal publisher on
+  # first use, so the fourteen names are claimed one at a time -- each round registers the next
+  # pending publisher and publishes that distribution alone (D1034). A tag push gives one run, so
+  # the rounds are dispatched.
+  #
+  # A DISPATCH USES THE WORKFLOW DEFINITION FROM THE SELECTED REF, so the tag a bootstrap runs
+  # against must be one whose tree already contains this trigger. v1.0.0's does not, and
+  # re-creating a published tag would orphan the SLSA provenance its release carries, so the first
+  # tag that can be bootstrapped is the first one cut after this lands.
+  #
+  # tag-guard needs nothing added for this: on a dispatch against a tag, github.ref_type is still
+  # "tag" and github.ref_name is still the tag, so section 6.1's two assertions and the
+  # "RELEASE is the tag without its leading v" step hold exactly as written.
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: "one distribution to publish alone; empty publishes all fourteen in order"
+        required: false
+        type: string
+        default: ""
+
 # Minimal at the top level, section 7.3's own first line. Every job re-grants exactly what it
 # needs, which for the reusable ci job means contents: read -- a called workflow inherits the
 # caller's token and can only reduce it, so an unstated permission there is a checkout failure
@@ -418,13 +440,52 @@ jobs:
         with:
           subject-path: "dist/*"
       - name: "split dist/ into the four ordered upload groups"
+        id: split
         # Section 7.3 prints four bare uses: lines whose trailing comments name the four groups and
         # does not say how a group is selected. The selection is fully determined by section 7.1's
         # fourteen names, so it is derived here rather than hand-listed: ports, then core, then
         # everything else that is not the umbrella, then the umbrella. sdist and wheel filenames
         # normalise "-" to "_", which is why the globs use omniweave_.
+        #
+        # D1036 adds the BOOTSTRAP ARM and changes nothing else. With no input every file is
+        # classified exactly as before and all four groups are non-empty, so all four steps run in
+        # section 7.3's order. With one distribution named, everything else is moved aside first,
+        # exactly one group ends up non-empty, and the other three steps are skipped by the `if:`
+        # each one now carries -- the four `uses:` lines, their order and the single `skip-existing`
+        # all survive, because the partial-failure design is about the ORDER of the uploads that
+        # happen, and a bootstrap round performs one.
+        env:
+          BOOTSTRAP: ${{ inputs.bootstrap }}
         run: |
           mkdir -p groups/ports groups/core groups/siblings groups/umbrella
+          if [ -n "$BOOTSTRAP" ]
+          then
+            # The name is a distribution name; the filenames normalise "-" to "_". A quoted
+            # variable in a case pattern is literal, so only the trailing -* globs.
+            keep="$(echo "$BOOTSTRAP" | tr '-' '_')"
+            mkdir -p deferred
+            for path in dist/*
+            do
+              case "$(basename "$path")" in
+                "$keep"-*) ;;
+                *) mv "$path" deferred/ ;;
+              esac
+            done
+            kept="$(find dist -maxdepth 1 -type f | wc -l)"
+            # A bootstrap round that matched nothing would skip all four steps and report a green
+            # publish that published nothing, which is section 6.8's check that cannot fail. An
+            # sdist and a wheel is the only right answer.
+            if [ "$kept" != "2" ]
+            then
+              echo "release FAILED: bootstrap $BOOTSTRAP matched $kept file(s) in dist/," \
+                "expected an sdist + a wheel; it is not one of section 7.1's fourteen names" \
+                | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            aside="$(find deferred -maxdepth 1 -type f | wc -l)"
+            echo "bootstrap: $BOOTSTRAP alone, $aside file(s) deferred" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           # dist/* does not glob the dist/.gitignore that uv writes, which is why the case arms
           # below can afford to treat an unrecognised name as a failure.
           for path in dist/*
@@ -441,22 +502,42 @@ jobs:
                 ;;
             esac
           done
-          for group in ports core umbrella
-          do
-            count="$(find "groups/$group" -maxdepth 1 -type f | wc -l)"
-            if [ "$count" != "2" ]
+          # The shape assertions are about a WHOLE release, so they hold only when one is being
+          # published. A bootstrap round is one distribution by construction and its own "exactly
+          # two files" check above is the assertion that fits it.
+          if [ -z "$BOOTSTRAP" ]
+          then
+            for group in ports core umbrella
+            do
+              count="$(find "groups/$group" -maxdepth 1 -type f | wc -l)"
+              if [ "$count" != "2" ]
+              then
+                echo "release FAILED: groups/$group holds $count files, expected an sdist + a wheel"
+                exit 1
+              fi
+            done
+            siblings="$(find groups/siblings -maxdepth 1 -type f | wc -l)"
+            if [ "$siblings" != "22" ]
             then
-              echo "release FAILED: groups/$group holds $count files, expected an sdist + a wheel"
+              echo "release FAILED: the eleven siblings are $siblings files, expected 22"
               exit 1
             fi
-          done
-          siblings="$(find groups/siblings -maxdepth 1 -type f | wc -l)"
-          if [ "$siblings" != "22" ]
-          then
-            echo "release FAILED: the eleven siblings are $siblings files, expected 22"
-            exit 1
           fi
+          # One output per group, so each upload step can ask whether it has anything to upload.
+          # pypa/gh-action-pypi-publish fails on an empty packages-dir rather than no-opping, which
+          # is why this is an `if:` on the step and not an empty directory handed to the action.
+          for group in ports core siblings umbrella
+          do
+            if [ -n "$(find "groups/$group" -maxdepth 1 -type f)" ]
+            then
+              echo "$group=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$group=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
       - name: "step 1 -- omniweave-ports, if its Port major moved"
+        # D1036: true on every full release, and on the one bootstrap round that names this group.
+        if: steps.split.outputs.ports == 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/ports
@@ -468,14 +549,20 @@ jobs:
           # defect that must not be skipped past.
           skip-existing: true
       - name: "step 2 -- omniweave-core"
+        if: steps.split.outputs.core == 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/core
       - name: "step 3 -- the eleven siblings"
+        # The eleven upload together on a full release. A bootstrap round that names one of them
+        # leaves exactly that one here, which is the whole reason this group needed a selector:
+        # eleven names cannot be claimed by one pending publisher.
+        if: steps.split.outputs.siblings == 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/siblings
       - name: "step 4 -- omniweave"
+        if: steps.split.outputs.umbrella == 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/umbrella
