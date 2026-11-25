@@ -2035,3 +2035,87 @@ def test_the_tripwires_test_no_path_that_exists_on_this_checkout(ci: Workflow) -
             f"the {step} tripwire tests {firing}, which exist on this checkout, so the {job} job "
             f"is red on every PR. Wire the step, then narrow the condition -- do not widen it."
         )
+
+
+# ==================================================================================================
+# D1036: the bootstrap selector. W10.9 claims the fourteen PyPI names one at a time, because a
+# pending publisher is unique on (owner, repository, workflow, environment) and converts on first
+# use (D1034), so the publish job must be able to upload ONE distribution. These tests freeze the
+# two halves of that: the trigger that makes fourteen rounds of one tag possible, and the four
+# `if:` conditions that let exactly one upload step run while section 7.3's printed shape -- four
+# `uses:` lines, in order, with `skip-existing` on the first alone -- stays intact.
+# ==================================================================================================
+
+
+def test_release_can_be_dispatched_for_one_bootstrap_round(release: Workflow) -> None:
+    """A tag push gives one run and the bootstrap needs fourteen, so `release.yml` is also
+    dispatchable with one distribution named.
+
+    The input is deliberately a bare string rather than a choice of fourteen: section 7.1's names
+    are the register, the splitter fails on a name that matches no file, and a `choice` list here
+    would be a fifteenth place to keep the fourteen names in step.
+    """
+    code = release.code_lines()
+    assert any("workflow_dispatch:" in line for line in code)
+    assert any("bootstrap:" in line for line in code)
+    assert any('tags: ["v*"]' in line for line in code), (
+        "the dispatch joins the tag trigger rather than replacing it"
+    )
+
+
+def test_the_bootstrap_selector_gates_each_of_the_four_upload_steps(release: Workflow) -> None:
+    """One `if:` per group, reading the splitter step's own output.
+
+    `pypa/gh-action-pypi-publish` fails on an empty `packages-dir` rather than no-opping, so a
+    skipped group has to be a skipped STEP. Without these four conditions a bootstrap round dies at
+    step 2 having already published step 1, and on immutable PyPI filenames that is the one state
+    section 7.7 says has no clean recovery.
+    """
+    publish = release.job_blocks()["publish"]
+    assert any("id: split" in line for line in publish)
+    for group in ("ports", "core", "siblings", "umbrella"):
+        wanted = "if: steps.split.outputs." + group + " == " + repr("true")
+        assert any(wanted in line for line in publish), group
+
+
+def test_the_four_ordered_upload_steps_survive_the_selector(release: Workflow) -> None:
+    """Section 7.3's shape is four `uses:` lines in dependency order, and the selector adds
+    conditions to them rather than replacing them with a loop over one."""
+    publishers = [
+        ref for _, ref, _ in release.uses() if ref.startswith("pypa/gh-action-pypi-publish")
+    ]
+    assert len(publishers) == 4, publishers
+    steps = [name for name in release.step_names("publish") if name.startswith("step ")]
+    assert steps == [
+        "step 1 -- omniweave-ports, if its Port major moved",
+        "step 2 -- omniweave-core",
+        "step 3 -- the eleven siblings",
+        "step 4 -- omniweave",
+    ], steps
+
+
+def test_only_the_first_upload_step_may_skip_an_existing_file(release: Workflow) -> None:
+    """Section 4.1's Port-major exception belongs to step 1 alone, and the selector does not
+    spread it.
+
+    On steps 2 to 4 a file that already exists means `check_versions.py` let a stale version
+    through, and a bootstrap round is no reason to skip past that: each round publishes a name for
+    the FIRST time, so nothing it uploads can already exist.
+    """
+    publish = release.job_blocks()["publish"]
+    assert len([line for line in publish if "skip-existing: true" in line]) == 1
+
+
+def test_a_bootstrap_round_matching_no_file_fails_rather_than_publishing_nothing(
+    release: Workflow,
+) -> None:
+    """Section 6.8: a green publish that published nothing is a check that cannot fail.
+
+    A mistyped distribution name would move every file aside, leave all four groups empty, skip all
+    four steps and report success, so the splitter counts what it kept and refuses anything but an
+    sdist and a wheel.
+    """
+    body = release.step_run_bodies("publish")["split dist/ into the four ordered upload groups"]
+    assert 'if [ "$kept" != "2" ]' in body
+    assert "expected an sdist + a wheel" in body
+    assert "$GITHUB_OUTPUT" in body, "the four group outputs are what the `if:` conditions read"

@@ -1,0 +1,6 @@
+# The component count of each SBOM the last stable release actually published.
+#
+# Written by `tools/check_sbom.py --write-baseline`, never by hand: ruling 5 in that
+# module says a hand-edited baseline sets the floor to whatever passes, which is the same
+# defeat as having no floor at all. 11-repo-layout.md section 7.3 rule 4 owns the 80% it
+# is read at, and section 7.1 owns the six rows this file can hold.
